@@ -1,0 +1,343 @@
+Directory tree of ./src/docrag/models
+----------------------------------------
+./src/docrag/models
+├── dataset.py
+├── enums.py
+├── __init__.py
+└── unified.py
+
+1 directory, 4 files
+
+
+========== START OF FILE: dataset.py ==========
+"""
+Unified schema for representing QA datasets.
+"""
+
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional, Dict, Any
+
+
+from pydantic import BaseModel, Field
+
+__all__ = [
+    "Metadata",
+    "Dataset",
+]
+
+
+class Metadata(BaseModel):
+    """Metadata for an entire dataset."""
+
+    name: str = Field(..., description="Name of the dataset.")
+    unified: bool = Field(
+        ..., description="True if the dataset has parsed into the unified format."
+    )
+    unified_at: Optional[datetime] = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Timestamp when the dataset was unified.",
+    )
+    version: Optional[str] = Field(None, description="Schema or dataset version.")
+    extras: Dict[str, Any] = Field(
+        default_factory=dict, description="Additional dataset-level metadata."
+    )
+
+
+class Dataset(BaseModel):
+    """A single QA dataset."""
+
+    metadata: Metadata = Field(..., description="Dataset-level metadata.")
+    entries_file_path: Path = Field(
+        ..., description="Path to file containing dataset entries (JSON or JSONL)."
+    )
+
+========== END OF FILE: dataset.py ==========
+
+========== START OF FILE: enums.py ==========
+"""
+Enumerations used for labelling documents, questions, answers, and evidence
+"""
+
+from enum import Enum
+
+__all__ = [
+    "DatasetSplit",
+    "QuestionType",
+    "DocumentType",
+    "AnswerFormat",
+    "EvidenceSource",
+]
+
+
+class DatasetSplit(str, Enum):
+    """
+    Dataset subdivision to which an example belongs.
+
+    Members
+    -------
+    TRAIN
+        Example is used during model optimisation.
+    DEV
+        Held-out set for hyper-parameter tuning or early-stopping.
+    VAL
+        Alternative name for *DEV*; included for interoperability.
+    TEST
+        Final, unseen set for reporting headline metrics.
+    """
+
+    TRAIN = "train"
+    DEV = "dev"
+    VAL = "val"
+    TEST = "test"
+
+
+class QuestionType(str, Enum):
+    """
+    High-level categories of questions.
+
+    Members
+    -------
+    EXTRACTIVE
+        Ask to copy a span or short list exactly as it appears in the document
+        (e.g. “Who signed the contract?”).
+    VERIFICATION
+        Ask to confirm a stated fact with a Yes/No answer
+        (e.g. “Does clause 4 allow early termination?”).
+    COUNTING
+        Ask to count explicit items (e.g. “How many references are cited?”).
+    ARITHMETIC
+        Ask to compute or compare numbers found in the context
+        (e.g. averages, differences, maxima).
+    ABSTRACTIVE
+        Ask for a summary, description, or trend that generalises the content
+        (e.g. “Describe the overall sales trend.”).
+    PROCEDURAL
+        Ask for a workflow or set of steps documented in the text
+        (e.g. “Outline the anonymisation protocol.”).
+    REASONING
+        Require multi-hop logic, causal explanation, or hypothetical prediction
+        (e.g. “If revenue grows at 5 %, project earnings for 2027.”).
+    OTHER
+        Catch-all for questions that do not fit any defined category.
+    """
+
+    EXTRACTIVE = "extractive"
+    VERIFICATION = "verification"
+    COUNTING = "counting"
+    ARITHMETIC = "arithmetic"
+    ABSTRACTIVE = "abstractive"
+    PROCEDURAL = "procedural"
+    REASONING = "reasoning"
+    OTHER = "other"
+
+
+class DocumentType(str, Enum):
+    """
+    High-level categories (genres) of documents
+
+    Members
+    -------
+    LEGAL
+        Contracts, pleadings, court opinions, statutes, licences.
+    FINANCIAL
+        Invoices, balance sheets, annual or quarterly reports, tax forms.
+    SCIENTIFIC
+        Research articles, technical papers, lab reports, white papers.
+    TECHNICAL
+        Manuals, specifications, standard-operating procedures, datasheets.
+    POLICY
+        Internal or governmental policy statements, regulations, guidelines.
+    CORRESPONDENCE
+        Letters, e-mails, memoranda—any directed communication between parties.
+    MARKETING
+        Brochures, ads, press releases, product catalogues.
+    PERSONAL_RECORD
+        Certificates, résumés/CVs, ID cards, medical or academic records.
+    NEWS
+        Newspaper or magazine articles, newswire stories, bulletins.
+    OTHER
+        Any document whose semantic category is out of scope or uncertain.
+    """
+
+    LEGAL = "legal"
+    FINANCIAL = "financial"
+    SCIENTIFIC = "scientific"
+    TECHNICAL = "technical"
+    POLICY = "policy"
+    CORRESPONDENCE = "correspondence"
+    MARKETING = "marketing"
+    PERSONAL_RECORD = "personal_record"
+    NEWS = "news"
+    OTHER = "other"
+
+
+class AnswerFormat(str, Enum):
+    """
+    Data type of an answer value.
+
+    Members
+    -------
+    STRING
+        Free-form text or quoted span.
+    REFERENCE
+        Pointer to a document object (e.g. “figure 2”, “table A-3”, “page 4”).
+    INTEGER
+        Whole-number result (counts, rankings).
+    FLOAT
+        Real-valued numeric result (averages, percentages, monetary values).
+    BOOLEAN
+        True/False or Yes/No.
+    LIST
+        Ordered or unordered collection of homogeneous items.
+    OTHER
+        Any answer representation not covered above.
+    """
+
+    STRING = "string"
+    REFERENCE = "object"
+    INTEGER = "integer"
+    FLOAT = "float"
+    BOOLEAN = "boolean"
+    LIST = "list"
+    OTHER = "other"
+
+
+class EvidenceSource(str, Enum):
+    """
+    Where in the document the evidence for an answer was located.
+
+    Members
+    -------
+    SPAN
+        Linear text span (sentence, paragraph, heading).
+    TABLE
+        Tabular structure.
+    CHART
+        Plot, graph, or other visual quantitative representation.
+    IMAGE
+        Non-chart visual (diagram, photograph, scanned figure).
+    NONE
+        No identifiable source of evidence in the document.
+    OTHER
+        Any source type not enumerated above.
+    """
+
+    SPAN = "span"
+    TABLE = "table"
+    CHART = "chart"
+    IMAGE = "image"
+    NONE = "none"
+    OTHER = "other"
+
+========== END OF FILE: enums.py ==========
+
+========== START OF FILE: unified.py ==========
+"""
+Unified schema for representing QA documents.
+"""
+
+from __future__ import annotations
+from pathlib import Path
+from typing import List, Optional, Union
+
+from pydantic import BaseModel, Field
+
+from .enums import *
+
+__all__ = [
+    "Question",
+    "Page",
+    "Document",
+    "Evidence",
+    "Answer",
+    "Metadata",
+    "Entry",
+]
+
+
+class Question(BaseModel):
+    """A question posed in a QA example."""
+
+    id: str = Field(..., description="Unique identifier for the question.")
+    text: str = Field(..., description="The natural language text of the question.")
+    type: List[QuestionType] = Field(
+        default_factory=list,
+        description="List of high-level question categories.",
+    )
+
+
+class Page(BaseModel):
+    """A single page of a document."""
+
+    id: str = Field(..., description="Unique page identifier.")
+    number: int = Field(..., description="1-based page number.")
+    path: Union[str, Path] = Field(
+        ..., description="Filesystem path to the page image."
+    )
+
+
+class Document(BaseModel):
+    """A multi-page document providing context."""
+
+    id: str = Field(..., description="Unique identifier for the document.")
+    pages: List[Page] = Field(..., description="Ordered list of Page objects.")
+    type: List[DocumentType] = Field(
+        default_factory=list,
+        description="List of high-level document categories.",
+    )
+    source_path: Optional[Path] = Field(
+        ..., description="Filesystem path to the original document file (PDF)."
+    )
+
+
+class Evidence(BaseModel):
+    """Content from the document used to support the answer."""
+
+    pages: List[Page] = Field(
+        ..., description="Pages that form the evidence for this example."
+    )
+    source: Optional[EvidenceSource] = Field(
+        None, description="Specific source type within the page(s)."
+    )
+
+
+class Answer(BaseModel):
+    """The acceptable answer(s) to a question."""
+
+    variants: List[str] = Field(..., description="List of valid answer variants.")
+    answerable: bool = Field(
+        ..., description="True if the question is answerable given the document."
+    )
+    rationale: Optional[str] = Field(
+        None, description="Explanation or justification for the answer."
+    )
+    format: Optional[AnswerFormat] = Field(
+        None, description="The expected data format of the answer."
+    )
+
+
+class Metadata(BaseModel):
+    """Additional metadata for a single QA example."""
+
+    origin: str = Field(..., description="Source dataset or file identifier.")
+    reference_id: str = Field(..., description="Original entry ID in the raw dataset.")
+    tags: List[str] = Field(
+        default_factory=list, description="Free-form tags for filtering or grouping."
+    )
+
+
+class Entry(BaseModel):
+    """Complete representation of a single entry/example in a QA dataset."""
+
+    id: str = Field(..., description="Unique identifier for an entry.")
+    question: Question = Field(..., description="Question object for an entry.")
+    document: Document = Field(..., description="Document object for an entry.")
+    evidence: Optional[Evidence] = Field(
+        None, description="Evidence object for an entry."
+    )
+    answer: Optional[Answer] = Field(None, description="Answer object for an entry.")
+    metadata: Metadata = Field(..., description="Metadata object for an entry.")
+
+========== END OF FILE: unified.py ==========
+
