@@ -32,14 +32,19 @@ class BaseUnifier(ABC, Generic[RawT]):
         data_dir: Root directory with `raw/` and `unified/` subdirectories.
     """
 
-    def __init__(self, name: str, data_dir: Path) -> None:
+    def __init__(
+        self, name: str, data_dir: Path, *, remove_insane: bool = False
+    ) -> None:
         """
         Args:
             name: Dataset name for file naming and metadata.
             data_dir: Base path containing raw data and where unified output will go.
+            remove_insane: Whether to discard problematic entries or not.
         """
         self._name = name
         self._data_dir = data_dir
+
+        self.remove_insane = remove_insane
 
         # Raw inputs
         self._raw_qas_files: list[Path] = []
@@ -279,7 +284,8 @@ class BaseUnifier(ABC, Generic[RawT]):
             )
             for raw in raw_entries:
                 ue = self._convert_qa_entry(raw)
-                unified_list.append(ue)
+                if ue is not None:
+                    unified_list.append(ue)
 
             self.logger.debug(
                 "Split %s converted to %d unified entries",
@@ -295,7 +301,7 @@ class BaseUnifier(ABC, Generic[RawT]):
         return split_map
 
     @abstractmethod
-    def _convert_qa_entry(self, raw: RawT) -> UnifiedEntry:
+    def _convert_qa_entry(self, raw: RawT) -> UnifiedEntry | None:
         """
         Map a raw entry into the unified schema.
 
@@ -375,26 +381,38 @@ class BaseUnifier(ABC, Generic[RawT]):
             RuntimeError: If the corpus has not been loaded yet.
             ValueError: If any entry references a (doc_id, page) not found in the corpus.
         """
-        if not hasattr(self, "_corpus_index") or self._corpus_index is None:
+        if not getattr(self, "_corpus_index", None):
             raise RuntimeError(
                 "Corpus index is empty – call `_load_corpus()` before sanity check."
             )
 
-        missing_references: list[str] = []
+        invalid_entries = []
         for ue in entries:
             if ue.evidence:
-                doc_id = ue.document.id
                 for page_num in ue.evidence.pages:
-                    key: tuple[str, int] = (doc_id, page_num)
-                    if key not in self._corpus_index:
-                        missing_references.append(f"{ue.id}: missing page {page_num}")
+                    if (ue.document.id, page_num) not in self._corpus_index:
+                        invalid_entries.append(ue)
+                        break
 
-        if missing_references:
-            error_msg = (
-                "Corpus sanity check failed. The following entries reference "
-                "pages not present in the corpus:\n  " + "\n  ".join(missing_references)
-            )
-            raise ValueError(error_msg)
+        if invalid_entries:
+            if self.remove_insane:
+                for ue in invalid_entries:
+                    self.logger.warning(
+                        "Removing entry %s; referenced pages %s not in corpus",
+                        ue.id,
+                        ue.evidence.pages,
+                    )
+                    # drop them in place
+                entries[:] = [ue for ue in entries if ue not in invalid_entries]
+            else:
+                msgs = [
+                    f"{ue.id}: missing pages {ue.evidence.pages}"
+                    for ue in invalid_entries
+                ]
+                raise ValueError(
+                    "Corpus sanity check failed for the following entries:\n  "
+                    + "\n  ".join(msgs)
+                )
 
     def _write_corpus(self) -> Path:
         """

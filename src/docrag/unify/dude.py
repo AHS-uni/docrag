@@ -76,7 +76,7 @@ class DUDEUnifier(BaseUnifier[DUDERaw]):
         fmt = AnswerFormat.LIST if saw_list else AnswerFormat.MISSING
         return variants, fmt
 
-    def _convert_qa_entry(self, raw: DUDERaw) -> UnifiedEntry:
+    def _convert_qa_entry(self, raw: DUDERaw) -> UnifiedEntry | None:
         """
         Map a raw DUDE entry into the unified schema.
 
@@ -88,6 +88,7 @@ class DUDEUnifier(BaseUnifier[DUDERaw]):
         # Build the Question model
         q_type_map = {
             "extractive": QuestionType.EXTRACTIVE,
+            "list/extractive": QuestionType.EXTRACTIVE,
             "abstractive": QuestionType.ABSTRACTIVE,
             "list/abstractive": QuestionType.ABSTRACTIVE,
         }
@@ -132,14 +133,18 @@ class DUDEUnifier(BaseUnifier[DUDERaw]):
                 format=fmt,
             )
 
-        if (
-            evidence.pages == []  # no annot. evidence
-            and answer.type == AnswerType.ANSWERABLE
-        ):
+        if evidence.pages == [] and answer.type == AnswerType.ANSWERABLE:
             evidence = Evidence(pages=page_numbers)
+            if evidence.pages == []:  # still no evidence
+                self.logger.debug(
+                    "Skipping entry %s. Was unable to find evidence pages. Most likely a problem with the document %s.",
+                    raw.question_id,
+                    raw.doc_id,
+                )
+                return None  # something is broken internally with the document skip this entry
 
         return UnifiedEntry(
-            id=f"{raw.doc_id}-{raw.question_id}",
+            id=raw.question_id,
             question=question,
             document=document,
             evidence=evidence,
