@@ -14,7 +14,13 @@ from datasets import (
 )
 from huggingface_hub import HfApi, CommitInfo
 
-from docrag.schema.enums import QuestionType, DocumentType, EvidenceSource, AnswerFormat
+from docrag.schema import (
+    AnswerType,
+    QuestionType,
+    DocumentType,
+    EvidenceSource,
+    AnswerFormat,
+)
 
 __all__ = [
     "build_corpus_features",
@@ -46,6 +52,7 @@ def build_qa_features() -> Features:
     d_types = [e.value for e in DocumentType]
     e_sources = [e.value for e in EvidenceSource]
     a_formats = [e.value for e in AnswerFormat]
+    a_types = [e.value for e in AnswerType]
 
     return Features(
         {
@@ -65,8 +72,8 @@ def build_qa_features() -> Features:
                 "sources": Sequence(ClassLabel(names=e_sources)),
             },
             "answer": {
+                "type": ClassLabel(names=a_types),
                 "variants": Sequence(Value("string")),
-                "answerable": Value("bool"),
                 "rationale": Value("string"),
                 "format": ClassLabel(names=a_formats),
             },
@@ -127,9 +134,9 @@ def load_qa_dataset(
     """
     root = Path(dataset_root)
     default = {
-        "train": "qas/train.jsonl",
-        "val": "qas/val.jsonl",
-        "test": "qas/test.jsonl",
+        "train": "unified_qas/train.jsonl",
+        "val": "unified_qas/val.jsonl",
+        "test": "unified_qas/test.jsonl",
     }
     splits = splits or default
     features = build_qa_features()
@@ -188,7 +195,7 @@ def push_dataset_to_hub(
     token: str | None = None,
     private: bool = False,
     commit_message: str | None = None,
-    revision: str = "master",
+    revision: str | None = None,
 ) -> CommitInfo:
     """
     Pushes a Hugging Face Dataset or DatasetDict to the Hugging Face Hub.
@@ -199,7 +206,7 @@ def push_dataset_to_hub(
         token: Optional HF access token.
         private: Whether to create a private dataset.
         commit_message: Message for the commit (defaults to "Upload dataset").
-        revision: Branch to push to (defaults to "master").
+        revision: Branch to push to (defaults to "main").
     """
     api = HfApi()
     api.create_repo(
