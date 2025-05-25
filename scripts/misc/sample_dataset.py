@@ -2,7 +2,8 @@
 """
 sample_dataset.py — create a smaller sample of a DocVQA‐style (or similar)
 dataset by selecting N documents and filtering Q&A JSON/JSONL files,
-with optional regex-based ID extraction.
+with optional regex-based ID extraction.  Supports both nested "documents/"
+directories and flat "raw_documents/" with file stems as IDs.
 """
 
 import argparse
@@ -23,7 +24,7 @@ def parse_args():
         "--input-dir",
         type=Path,
         required=True,
-        help="Root of the original dataset (must contain 'documents/' and 'raw_qas/').",
+        help="Root of the original dataset (must contain 'documents/' or 'raw_documents/' and 'raw_qas/').",
     )
     parser.add_argument(
         "-o",
@@ -37,7 +38,7 @@ def parse_args():
         "--num-docs",
         type=int,
         required=True,
-        help="How many document folders to pick at random.",
+        help="How many documents/files to pick at random.",
     )
     parser.add_argument(
         "-k",
@@ -66,6 +67,13 @@ def parse_args():
 
 
 def extract_entries(obj):
+    """
+    Locate a list of entries in a JSON object or array.
+
+    Returns:
+      entries: list of dicts
+      container_key: if entries were under obj[container_key], else None (root array)
+    """
     if isinstance(obj, list):
         return obj, None
     if isinstance(obj, dict):
@@ -79,17 +87,25 @@ def extract_entries(obj):
 
 def get_entry_id(entry: dict, key: str, id_re: re.Pattern | None) -> str | None:
     """
-    Return the document ID for this entry by either:
-      - If id_re is None: entry[key] (must be a string)
-      - Else: apply id_re to entry[key], return group(1) on match.
+    Return the document ID for this entry by drilling into nested keys.
+    E.g. key="doc.uid" will fetch entry["doc"]["uid"].
+    Then, if `id_re` is provided, apply it to the string.
     """
-    raw = entry.get(key)
+    # 1) Drill into nested dicts
+    parts = key.split(".")
+    raw = entry
+    for p in parts:
+        if not isinstance(raw, dict):
+            return None
+        raw = raw.get(p)
+        # 2) Must end up with a string
     if not isinstance(raw, str):
         return None
-    if id_re is None:
-        return raw
-    m = id_re.search(raw)
-    return m.group(1) if m else None
+    # 3) Optionally regex‐extract
+    if id_re:
+        m = id_re.search(raw)
+        return m.group(1) if m else None
+    return raw
 
 
 def filter_qas(
@@ -102,11 +118,9 @@ def filter_qas(
     data = json.loads(src_path.read_text(encoding="utf-8"))
     entries, container_key = extract_entries(data)
 
-    filtered = []
-    for e in entries:
-        docid = get_entry_id(e, key, id_re)
-        if docid is not None and docid in selected_ids:
-            filtered.append(e)
+    filtered = [
+        e for e in entries if (docid := get_entry_id(e, key, id_re)) in selected_ids
+    ]
 
     out = filtered if container_key is None else (data | {container_key: filtered})
     dst_path.write_text(
@@ -129,8 +143,7 @@ def filter_jsonl(
     ):
         for line in src:
             obj = json.loads(line)
-            docid = get_entry_id(obj, key, id_re)
-            if docid is not None and docid in selected_ids:
+            if (docid := get_entry_id(obj, key, id_re)) in selected_ids:
                 dst.write(json.dumps(obj, ensure_ascii=False) + "\n")
                 count += 1
     return count
@@ -144,38 +157,64 @@ def main():
     # Compile regex if provided
     id_re = re.compile(args.id_regex) if args.id_regex else None
 
-    docs_in = args.input_dir / "documents"
-    qas_in = args.input_dir / "raw_qas"
-    docs_out = args.output_dir / "documents"
-    qas_out = args.output_dir / "raw_qas"
+    # Determine whether using flat raw_documents or nested documents
+    raw_docs_dir = args.input_dir / "raw_documents"
+    nested_docs_dir = args.input_dir / "documents"
 
-    # Create output dirs
-    for d in (docs_out, qas_out):
-        d.mkdir(parents=True, exist_ok=True)
-
-    # Sample document folders
-    all_docs = [p.name for p in docs_in.iterdir() if p.is_dir()]
-    if args.num_docs > len(all_docs):
+    if raw_docs_dir.exists():
+        docs_in = raw_docs_dir
+        is_flat = True
+        docs_out = args.output_dir / "raw_documents"
+    elif nested_docs_dir.exists():
+        docs_in = nested_docs_dir
+        is_flat = False
+        docs_out = args.output_dir / "documents"
+    else:
         sys.exit(
-            f"Requested {args.num_docs} docs but only found {len(all_docs)} available."
+            "ERROR: No 'documents/' or 'raw_documents/' directory found in input path."
         )
-    selected = set(random.sample(all_docs, args.num_docs))
-    print(f"Sampling {len(selected)} documents: {sorted(selected)}")
 
-    # Copy the sampled documents
-    for doc_id in selected:
-        shutil.copytree(docs_in / doc_id, docs_out / doc_id)
+    # Prepare output docs directory
+    docs_out.mkdir(parents=True, exist_ok=True)
 
-    # Filter Q&A files
+    # Collect and sample
+    if is_flat:
+        all_items = [p for p in docs_in.iterdir() if p.is_file()]
+        if args.num_docs > len(all_items):
+            sys.exit(
+                f"Requested {args.num_docs} docs but only found {len(all_items)} files."
+            )
+        selected_items = random.sample(all_items, args.num_docs)
+        selected_ids = {p.stem for p in selected_items}
+        print(f"Sampling {len(selected_items)} files: {sorted(selected_ids)}")
+        for src in selected_items:
+            shutil.copy2(src, docs_out / src.name)
+    else:
+        all_dirs = [p for p in docs_in.iterdir() if p.is_dir()]
+        if args.num_docs > len(all_dirs):
+            sys.exit(
+                f"Requested {args.num_docs} docs but only found {len(all_dirs)} directories."
+            )
+        selected_dirs = random.sample(all_dirs, args.num_docs)
+        selected_ids = {p.name for p in selected_dirs}
+        print(f"Sampling {len(selected_dirs)} directories: {sorted(selected_ids)}")
+        for src in selected_dirs:
+            shutil.copytree(src, docs_out / src.name)
+
+    # Filter Q&A
+    qas_in = args.input_dir / "raw_qas"
+    qas_out = args.output_dir / "raw_qas"
+    qas_out.mkdir(parents=True, exist_ok=True)
+
     total = 0
-    for pattern in ("*.json", "*.jsonl"):
+    for pattern in ("*.json", "*.jsonl"):  # process both JSON and JSONL
         for src in qas_in.glob(pattern):
             dst = qas_out / src.name
-            if src.suffix == ".jsonl":
-                cnt = filter_jsonl(src, dst, selected, args.filter_key, id_re)
-            else:
-                cnt = filter_qas(src, dst, selected, args.filter_key, id_re)
-
+            cnt = (
+                filter_jsonl(src, dst, selected_ids, args.filter_key, id_re)
+                if src.suffix == ".jsonl"
+                else filter_qas(src, dst, selected_ids, args.filter_key, id_re)
+            )
             print(f"  → {src.name}: wrote {cnt} entries")
             total += cnt
 
