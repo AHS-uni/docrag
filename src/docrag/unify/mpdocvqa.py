@@ -1,6 +1,7 @@
 from pathlib import Path
 import json
 
+from docrag.schema.enums import AnswerFormat, AnswerType
 from docrag.schema.raw_entry import MPDocVQARaw
 from docrag.unify.base import BaseUnifier
 from docrag.schema import (
@@ -17,7 +18,14 @@ import json
 
 from docrag.schema.raw_entry import MPDocVQARaw
 from docrag.unify.base import BaseUnifier
-from docrag.schema import UnifiedEntry, Question, Document, Evidence, Answer
+from docrag.schema import (
+    UnifiedEntry,
+    Question,
+    Document,
+    Evidence,
+    Answer,
+    AnswerFormat,
+)
 
 
 class MPDocVQAUnifier(BaseUnifier[MPDocVQARaw]):
@@ -38,8 +46,7 @@ class MPDocVQAUnifier(BaseUnifier[MPDocVQARaw]):
         """
         Map a raw MP-DocVQA entry into the unified schema.
 
-        For train/val splits, wraps each raw answer list into an `Answer` object.
-        For the test split (competition data), leaves `answer` and `evidence` as None.
+        For the test split (competition data), leaves `answer` and `evidence` contain empty values.
         """
         # Build the Question model
         question = Question(
@@ -54,16 +61,17 @@ class MPDocVQAUnifier(BaseUnifier[MPDocVQARaw]):
         )
 
         # Build the Evidence model
-        evidence = None
+        evidence = Evidence()
         if raw.data_split.lower() != "test" and raw.answer_page_idx is not None:
             evidence = Evidence(pages=[raw.answer_page_idx])
 
         # Build the Answer model
-        answer = None
+        answer = Answer()
         if raw.data_split.lower() != "test":
             answer = Answer(
-                answerable=True,
+                type=AnswerType.ANSWERABLE,
                 variants=raw.answers,  # should always be non-empty in train/val
+                format=AnswerFormat.MISSING,
             )
 
         return UnifiedEntry(

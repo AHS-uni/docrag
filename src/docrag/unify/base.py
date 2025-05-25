@@ -3,11 +3,9 @@ Abstract base classes for processing datasets and their entries.
 """
 
 from __future__ import annotations
-import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Generic, TypeVar
-from collections.abc import Iterator
 import shutil
 import tempfile
 
@@ -59,7 +57,7 @@ class BaseUnifier(ABC, Generic[RawT]):
 
         # Logger
         self.logger = get_logger(
-            name="unify", level=10, log_file_path=Path("logs/unify.log")
+            name=self.__class__.__name__, level=10, log_file_path=Path("logs/unify.log")
         )
 
     @property
