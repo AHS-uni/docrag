@@ -97,6 +97,19 @@ class AnswerFormat(str, Enum):
     NONE = "none"
 
 
+class AnswerType(str, Enum):
+    """
+    Attributes:
+        ANSWERABLE: Question should be answered.
+        NOT_ANSWERABLE: Question should not be answered.
+        NONE: Reserved as default value
+    """
+
+    ANSWERABLE = "answerable"
+    NOT_ANSWERABLE = "not_answerable"
+    NONE = "none"
+
+
 class EvidenceSource(str, Enum):
     """
     Source type for answer evidence within a document.

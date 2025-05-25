@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, model_validator
 
-from .enums import QuestionType, DocumentType, EvidenceSource, AnswerFormat
+from .enums import QuestionType, DocumentType, EvidenceSource, AnswerFormat, AnswerType
 
 __all__ = [
     "Question",
@@ -29,7 +29,7 @@ class Question(BaseModel):
 
     id: str
     text: str
-    type: QuestionType = Field(default=QuestionType.MISSING)
+    type: QuestionType = QuestionType.MISSING
 
 
 class Document(BaseModel):
@@ -43,7 +43,7 @@ class Document(BaseModel):
     """
 
     id: str
-    type: DocumentType = Field(default=DocumentType.MISSING)
+    type: DocumentType = DocumentType.MISSING
     num_pages: int
 
 
@@ -71,26 +71,33 @@ class Answer(BaseModel):
         format:     Expected answer format (defaults to "none").
     """
 
-    answerable: bool
+    type: AnswerType = AnswerType.NONE
     variants: list[str] = Field(default_factory=list)
     rationale: str = Field(default_factory=str)
-    format: AnswerFormat = Field(default=AnswerFormat.NONE)
+    format: AnswerFormat = AnswerFormat.NONE
 
     @model_validator(mode="after")
     def validate_answer_fields(self):
         # If answerable, variants must exist
-        if self.answerable and not self.variants:
-            raise ValueError(
-                "`variants` must contain at least one item when `answerable` is True"
-            )
-        # If not answerable, other fields must be empty or None
-        if not self.answerable:
-            if self.variants:
-                raise ValueError("`variants` must be empty when `answerable` is False")
-            if self.rationale:
-                raise ValueError("`rationale` must be empty when `answerable` is False")
+        if self.type == AnswerType.ANSWERABLE:
+            if self.variants == []:
+                raise ValueError(
+                    "`variants` must contain at least one item when `type` is 'answerable'"
+                )
+        # If not answerable, other fields must be empty
+        if self.type == AnswerType.NOT_ANSWERABLE:
+            if self.variants != []:
+                raise ValueError(
+                    "`variants` must be empty when `type` is 'not_answerable'"
+                )
+            if self.rationale != "":
+                raise ValueError(
+                    "`rationale` must be empty when `type` is 'not_answerable'"
+                )
             if self.format is not AnswerFormat.NONE:
-                raise ValueError('`format` must be "none" when `answerable` is False')
+                raise ValueError(
+                    "`format` must be 'none' when `type` is 'not_answerable'"
+                )
         return self
 
 
@@ -102,12 +109,28 @@ class UnifiedEntry(BaseModel):
         id:       Unique identifier for the entry.
         question: The associated question.
         document: The associated document.
-        evidence: Supporting evidence (defaults to None).
-        answer:   The answer object (defaults to None).
+        evidence: Supporting evidence.
+        answer:   The answer object.
     """
 
     id: str
     question: Question
     document: Document
-    evidence: Evidence | None = None
-    answer: Answer | None = None
+    evidence: Evidence
+    answer: Answer
+
+    @model_validator(mode="after")
+    def validate_entry_fields(self):
+        # If answerable, evidence pages must exist
+        if self.answer.type == AnswerType.ANSWERABLE:
+            if self.evidence.pages == []:
+                raise ValueError(
+                    "`evidence.pages` must be non-empty when `answer.type` is 'answerable'"
+                )
+        # If not answerable, evidence should be empty
+        if self.answer.type == AnswerType.NOT_ANSWERABLE:
+            if self.evidence.pages != [] and self.evidence.sources != []:
+                raise ValueError(
+                    "`evidence.pages` and 'evidence.sources' must be empty when `answer.type` is 'not_answerable'"
+                )
+        return self

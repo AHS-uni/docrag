@@ -7,6 +7,7 @@ from .enums import (
     DocumentType,
     AnswerFormat,
     EvidenceSource,
+    AnswerType,
 )
 from .unified_entry import UnifiedEntry, Question, Document, Evidence, Answer
 from .raw_entry import BaseRawEntry
@@ -19,6 +20,7 @@ __all__ = [
     "DocumentType",
     "AnswerFormat",
     "EvidenceSource",
+    "AnswerType",
     # unified models
     "UnifiedEntry",
     "Question",
