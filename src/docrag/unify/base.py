@@ -8,6 +8,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Generic, TypeVar
 from collections.abc import Iterator
+import shutil
+import tempfile
 
 from docrag.schema import (
     BaseRawEntry,
@@ -16,11 +18,11 @@ from docrag.schema import (
     DatasetSplit,
     CorpusPage,
 )
+from docrag.utils import get_logger
 
 __all__ = ["BaseUnifier"]
 
 RawT = TypeVar("RawT", bound=BaseRawEntry)
-logger = logging.getLogger(__name__)
 
 
 class BaseUnifier(ABC, Generic[RawT]):
@@ -30,7 +32,6 @@ class BaseUnifier(ABC, Generic[RawT]):
     Attributes:
         name: Unique identifier for the dataset.
         data_dir: Root directory with `raw/` and `unified/` subdirectories.
-        version: Dataset version string.
     """
 
     def __init__(self, name: str, data_dir: Path) -> None:
@@ -39,76 +40,264 @@ class BaseUnifier(ABC, Generic[RawT]):
             name: Dataset name for file naming and metadata.
             data_dir: Base path containing raw data and where unified output will go.
         """
-        self.name = name
-        self.data_dir = data_dir
+        self._name = name
+        self._data_dir = data_dir
+
+        # Raw inputs
+        self._raw_qas_files: list[Path] = []
+        self._raw_document_files: list[Path] = []
+
+        # Document corpus
+        self._corpus_records: list[tuple[str, int, Path]] = []
+        self._corpus_index: set[tuple[str, int]] = set()
 
         # Internal metadata state
-        self.num_documents: int = 0
-        self.num_pages: int = 0
-        self.total_questions: int = 0
-        self.splits: list[DatasetSplit] = []
+        self._num_documents: int = 0
+        self._num_pages: int = 0
+        self._total_questions: int = 0
+        self._splits: list[DatasetSplit] = []
+
+        # Logger
+        self.logger = get_logger(
+            name="unify", level=10, log_file_path=Path("logs/unify.log")
+        )
 
     @property
     def raw_qas_dir(self) -> Path:
         """Directory containing raw QA files."""
-        return self.data_dir / "raw_qas"
+        return self._data_dir / "raw_qas"
+
+    @property
+    def raw_documents_dir(self) -> Path:
+        """Directory containing raw document files."""
+        return self._data_dir / "raw_documents"
 
     @property
     def documents_dir(self) -> Path:
-        """Directory containing document files."""
-        return self.data_dir / "documents"
+        """Directory containing (processed) document files."""
+        return self._data_dir / "documents"
 
     @property
-    def unified_qas_dir(self) -> Path:
-        """Directory containing unified QA files."""
-        return self.data_dir / "unified_qas"
+    def qas_dir(self) -> Path:
+        """Directory containing unified/processed QA files."""
+        return self._data_dir / "unified_qas"
 
-    @abstractmethod
-    def discover_raw(self) -> list[Path]:
+    def unify(self) -> Path:
         """
-        Discover all raw QA file paths (e.g. JSON, CSV) under `raw_dir`.
+        Run the full dataset unification pipeline.
+
+        This is the one public method subclasses will call. It performs these steps:
+
+        1. Discover raw QA files and (if needed) raw document files.
+        2. Convert any raw documents into the `documents/` layout.
+        3. Load the processed corpus into memory.
+        4. Convert raw QA entries into `UnifiedEntry` objects, grouped by split.
+        5. Sanity-check that every evidence page exists in the corpus.
+        6. Write out:
+           - `corpus.jsonl`
+           - per-split QA JSONL files under `qas/`
+           - `metadata.json`
 
         Returns:
-            A list of paths to raw QA files to process.
-        """
-        ...
+            Path: The path to the `qas/` directory containing unified QA files.
 
-    def discover_documents(self) -> Iterator[tuple[str, int, Path]]:
+        Raises:
+            FileNotFoundError: If required input directories are missing.
+            ConversionError: If a raw document fails to convert.
+            ValueError: If sanity checks fail (missing pages).
         """
-        Walk `documents_dir` and yield (doc_id, page_number, image_path)
-        for every JPEG whose filename stem is an integer.
+        self.logger.info("Starting unification for dataset %s", self._name)
+        # 1) Find raw inputs
+        self._discover_raw()
+        self.logger.info(
+            "Discovered %d QA files and %d raw documents",
+            len(self._raw_qas_files),
+            len(self._raw_document_files),
+        )
 
-        Yields:
-            A tuple of (doc_id, page_number, image_path).
+        # 2) Build `documents/` if we have raw_documents to process
+        self._convert_raw_documents()
+        self.logger.info("Documents directory ready at %s", self.documents_dir)
+
+        # 3) Load the corpus into memory
+        self._load_corpus()
+        self.logger.info(
+            "Loaded corpus with %d documents and %d pages",
+            self._num_documents,
+            self._num_pages,
+        )
+
+        # 4) Convert QA entries
+        split_map: dict[str, list[UnifiedEntry]] = self._convert_raw_qas()
+        self.logger.info(
+            "Converted QA into %d splits totaling %d questions",
+            len(split_map),
+            self._total_questions,
+        )
+
+        # 5) Sanity check all unified entries against the corpus
+        all_entries: list[UnifiedEntry] = [
+            ue for entries in split_map.values() for ue in entries
+        ]
+        self._sanity_check(all_entries)
+
+        # 6) Write outputs
+        corpus_path = self._write_corpus()
+        self.logger.info("Wrote corpus to %s", corpus_path)
+        qas_path = self._write_unified_qas(split_map)
+        self.logger.info("Wrote unified qas to %s", qas_path)
+        metadata_path = self._write_metadata()
+        self.logger.info("Wrote dataset metadata to %s", metadata_path)
+        return self.qas_dir
+
+    def _discover_raw(self) -> None:
         """
-        for doc_dir in sorted(self.documents_dir.iterdir()):
-            if not doc_dir.is_dir():
-                continue
-            doc_id = doc_dir.name
-            self.num_documents += 1
-            for img_path in sorted(doc_dir.glob("*.jpg")):
-                try:
-                    page_num = int(img_path.stem)
-                except ValueError:
-                    continue
-                self.num_pages += 1
-                yield doc_id, page_num, img_path
+        Discover all raw QA files and raw document files (if needed).
+
+        Populates the following attributes:
+            _raw_qas_files (list[Path]):
+                A list of paths for each raw QA split file.
+            _raw_document_files (list[Path]):
+                A list of paths for each raw document file.
+
+        Raises:
+            FileNotFoundError: if `raw_qas_dir` does not exist.
+        """
+
+        if not (self.raw_qas_dir).exists():
+            raise FileNotFoundError(f"Raw QA directory not found: {self.raw_qas_dir}")
+
+        self._raw_qas_files = self._discover_raw_qas()
+
+        if (self.documents_dir).exists():
+            self._raw_document_files = []
+        else:
+            self._raw_document_files = self._discover_raw_documents()
+
+    def _discover_raw_qas(self) -> list[Path]:
+        """
+        Discover all raw QA files ('.json' or '.jsonl') under the QA directory.
+
+        Returns:
+            list[Path]: A sorted list of paths to raw QA files.
+        """
+        files: list[Path] = []
+        for ext in ("*.json", "*.jsonl"):
+            files.extend((self.raw_qas_dir).glob(ext))
+        return sorted(files)
+
+    def _discover_raw_documents(self):
+        """
+        Discover all raw document files (PDF) under the raw documents directory.
+
+        Returns:
+            list[Path]: A sorted list of paths to raw document files.
+        """
+        return sorted((self.raw_documents_dir).glob("*.pdf"))
 
     @abstractmethod
-    def load_raw(self, path: Path) -> list[RawT]:
+    def _load_raw_qas(self, path: Path) -> list[RawT]:
         """
         Load and parse a single raw QA file into typed entries.
 
         Args:
-            path: Path to a raw QA file.
+            path (Path): Path to a raw QA file.
 
         Returns:
-            A list of raw entries parsed from disk.
+            list[RawT]: A list of parsed raw entries.
         """
         ...
 
+    def _load_corpus(self) -> None:
+        """
+        Load the processed document corpus into memory.
+
+        Populates the following attributes:
+            _corpus_records (list[tuple[str, int, Path]]):
+                A list of (doc_id, page_number, image_path) for every page.
+            _corpus_index (set[tuple[str, int]]):
+                A set of (doc_id, page_number) pairs for O(1) lookup.
+            _num_documents (int):
+                The number of distinct documents discovered.
+            _num_pages (int):
+                The total number of pages across all documents.
+
+        Raises:
+            FileNotFoundError: If `self.documents_dir` does not exist.
+        """
+        if not self.documents_dir.exists():
+            raise FileNotFoundError(
+                f"Processed documents directory not found: {self.documents_dir}"
+            )
+
+        # reset caches and counters
+        self._corpus_records = []
+        self._corpus_index = set()
+        self._num_documents = 0
+        self._num_pages = 0
+
+        for doc_dir in sorted(self.documents_dir.iterdir()):
+            if not doc_dir.is_dir():
+                self.logger.debug(
+                    "Skipping non-directory in documents_dir: %s", doc_dir
+                )
+                continue
+            doc_id = doc_dir.name
+            self._num_documents += 1
+
+            for img_path in sorted(doc_dir.glob("*.jpg")):
+                try:
+                    page_number = int(img_path.stem)
+                except ValueError:
+                    # skip files whose stem isn’t an integer
+                    self.logger.debug(
+                        "Skipping non-integer page file %s in document %s",
+                        img_path.name,
+                        doc_id,
+                    )
+                    continue
+                self._num_pages += 1
+                self._corpus_records.append((doc_id, page_number, img_path))
+                self._corpus_index.add((doc_id, page_number))
+
+            count = len([p for (d, p, _) in self._corpus_records if d == doc_id])
+            self.logger.debug("Loaded document %s with %d pages", doc_id, count)
+
+    def _convert_raw_qas(self) -> dict[str, list[UnifiedEntry]]:
+        """
+        Convert all raw QA files into unified entries, grouped by split.
+
+        Returns:
+            dict[str, list[UnifiedEntry]]: Mapping from split name to list of
+            converted `UnifiedEntry` objects.
+        """
+        split_map: dict[str, list[UnifiedEntry]] = {}
+        for qa_path in self._raw_qas_files:
+            split_name = qa_path.stem
+            raw_entries = self._load_raw_qas(qa_path)
+            unified_list: list[UnifiedEntry] = []
+            self.logger.info(
+                "Converting split %s with %d raw entries", split_name, len(raw_entries)
+            )
+            for raw in raw_entries:
+                ue = self._convert_qa_entry(raw)
+                unified_list.append(ue)
+
+            self.logger.debug(
+                "Split %s converted to %d unified entries",
+                split_name,
+                len(unified_list),
+            )
+
+            # update metadata
+            num = len(unified_list)
+            self._total_questions += num
+            self._splits.append(DatasetSplit(name=split_name, num_questions=num))
+            split_map[split_name] = unified_list
+        return split_map
+
     @abstractmethod
-    def convert_entry(self, raw: RawT) -> UnifiedEntry:
+    def _convert_qa_entry(self, raw: RawT) -> UnifiedEntry:
         """
         Map a raw entry into the unified schema.
 
@@ -120,83 +309,169 @@ class BaseUnifier(ABC, Generic[RawT]):
         """
         ...
 
-    def build_corpus(self) -> Path:
+    def _convert_raw_documents(self) -> None:
         """
-        Build the document corpus from the documents directory and write it
-        to 'corpus.jsonl'. Updates internal document and page counts.
+        Convert raw document files into the expected `documents/` layout.
+
+        Raises:
+            ConversionError: if any document fails to convert.
+        """
+
+        # Nothing to do if there are no raw inputs or the target already exists
+        if not self._raw_document_files or (self.documents_dir).exists():
+            self.logger.debug("Skipping document processing")
+            return
+
+        # Write to a temporary directory then swap
+        tmp_dir = self._data_dir / ".tmp_documents"
+        if tmp_dir.exists():
+            shutil.rmtree(tmp_dir)
+        tmp_dir.mkdir()
+
+        for raw_path in self._raw_document_files:
+            doc_id = raw_path.stem
+            output_dir = self.documents_dir / doc_id
+            output_dir.mkdir(parents=True, exist_ok=True)
+            self.logger.debug(
+                "Converting raw document %s → %s", raw_path.name, output_dir
+            )
+            # delegate to utility or subclass override
+            self._convert_document(raw_path, output_dir)
+
+        tmp_dir.rename(self.documents_dir)
+
+        self.logger.info(
+            "Processed %d raw documents into %s",
+            len(self._raw_document_files),
+            self.documents_dir,
+        )
+
+    def _convert_document(self, raw_path: Path, output_dir: Path) -> None:
+        """Convert one raw document file into a directory of JPEG pages.
+
+        By default, this assumes PDF input and delegates to a shared utility.
+        Subclasses may override if they require a different conversion pipeline.
+
+        Args:
+            raw_path (Path): Path to the raw document (e.g., a PDF file).
+            output_dir (Path): Directory under `documents_dir` where pages
+                should be written as `0.jpg`, `1.jpg`, etc.
+
+        Raises:
+            ConversionError: If conversion fails for any page.
+        """
+        pass
+
+    def _sanity_check(self, entries: list[UnifiedEntry]) -> None:
+        """
+        Verify that every evidence page in the unified entries exists in the corpus.
+
+        This method requires that `_load_corpus()` has already been called to
+        populate `self._corpus_index`.
+
+        Args:
+            entries: A list of `UnifiedEntry` objects whose `evidence.pages`
+                should be validated against the known corpus.
+
+        Raises:
+            RuntimeError: If the corpus has not been loaded yet.
+            ValueError: If any entry references a (doc_id, page) not found in the corpus.
+        """
+        if not hasattr(self, "_corpus_index") or self._corpus_index is None:
+            raise RuntimeError(
+                "Corpus index is empty – call `_load_corpus()` before sanity check."
+            )
+
+        missing_references: list[str] = []
+        for ue in entries:
+            if ue.evidence:
+                doc_id = ue.document.id
+                for page_num in ue.evidence.pages:
+                    key: tuple[str, int] = (doc_id, page_num)
+                    if key not in self._corpus_index:
+                        missing_references.append(f"{ue.id}: missing page {page_num}")
+
+        if missing_references:
+            error_msg = (
+                "Corpus sanity check failed. The following entries reference "
+                "pages not present in the corpus:\n  " + "\n  ".join(missing_references)
+            )
+            raise ValueError(error_msg)
+
+    def _write_corpus(self) -> Path:
+        """
+        Write the document corpus to a JSONL file.
 
         Returns:
-            Path to the written corpus.jsonl file.
+            Path: The path to the written corpus.jsonl file.
+
+        Raises:
+            RuntimeError: If `_corpus_records` is empty (i.e. `_load_corpus`
+                was not called before writing).
         """
-        output_path = self.data_dir / "corpus.jsonl"
-        with output_path.open("w", encoding="utf-8") as f:
-            for doc_id, page_num, img_path in self.discover_documents():
+        if not self._corpus_records:
+            raise RuntimeError(
+                "No corpus records to write; call `_load_corpus()` first."
+            )
+
+        # write to tmp file then swap
+        tmp_path = self._data_dir / "corpus.jsonl.tmp"
+        with tmp_path.open("w", encoding="utf-8") as f:
+            for doc_id, page_num, img_path in self._corpus_records:
                 page = CorpusPage(
                     doc_id=doc_id, page_number=page_num, image_path=img_path
                 )
                 f.write(page.model_dump_json())
                 f.write("\n")
+        output_path = self._data_dir / "corpus.jsonl"
+        tmp_path.replace(output_path)
         return output_path
 
-    def unify(self) -> Path:
+    def _write_unified_qas(self, split_map: dict[str, list[UnifiedEntry]]) -> Path:
         """
-        Run the full unification pipeline:
+        Write unified QA entries to per-split JSONL files.
 
-        1. Discover raw files.
-        2. Load raw entries.
-        3. Convert to unified entries.
-        4. Write JSONL per split under `unified_qas/`.
-        5. Update internal metadata state (splits and question count).
+        Args:
+            split_map (dict[str, list[UnifiedEntry]]): Mapping from split
+                name to list of entries.
 
         Returns:
-            Path to the `unified_qas/` directory.
+            Path: The path to the `qas/` directory containing all split files.
         """
-        unified_qas_dir = self.unified_qas_dir
-        unified_qas_dir.mkdir(parents=True, exist_ok=True)
+        # Write to a temporary directory then swap
+        tmp_dir = self._data_dir / ".tmp_qas"
+        if tmp_dir.exists():
+            shutil.rmtree(tmp_dir)
+        tmp_dir.mkdir()
 
-        raw_split_files = self.discover_raw()
-        logger.info(
-            "Discovered %d splits for dataset %s", len(raw_split_files), self.name
-        )
-
-        for split_file in raw_split_files:
-            logger.info("Processing split file %s", split_file)
-            split_name = split_file.stem
-            raw_entries = self.load_raw(split_file)
-            unified_entries = [self.convert_entry(r) for r in raw_entries]
-
-            num_entries = len(unified_entries)
-            self.total_questions += num_entries
-
-            split = DatasetSplit(name=split_name, num_questions=num_entries)
-            self.splits.append(split)
-
-            output_file = unified_qas_dir / f"{split.name}.jsonl"
-            with output_file.open("w", encoding="utf-8") as f:
-                for entry in unified_entries:
-                    f.write(entry.model_dump_json())
+        for split_name, entries in split_map.items():
+            file_path = tmp_dir / f"{split_name}.jsonl"
+            with file_path.open("w", encoding="utf-8") as f:
+                for ue in entries:
+                    f.write(ue.model_dump_json())
                     f.write("\n")
 
-            logger.info("Wrote %d unified entries to %s", num_entries, output_file)
+        if (self.qas_dir).exists():
+            shutil.rmtree(self.qas_dir)
+        tmp_dir.rename(self.qas_dir)
 
-        return unified_qas_dir
+        return self.qas_dir
 
-    def write_dataset_metadata(self) -> Path:
+    def _write_metadata(self) -> Path:
         """
-        Write dataset-level metadata to 'metadata.json' using accumulated state.
+        Write dataset metadata to a JSON file.
 
         Returns:
-            Path to the written metadata.json file.
+            Path: The path to the written metadata.json file.
         """
         meta = DatasetMetadata(
-            name=self.name,
-            num_documents=self.num_documents,
-            num_pages=self.num_pages,
-            num_questions=self.total_questions,
-            splits=self.splits,
+            name=self._name,
+            num_documents=self._num_documents,
+            num_pages=self._num_pages,
+            num_questions=self._total_questions,
+            splits=self._splits,
         )
-        meta_path = self.data_dir / "metadata.json"
+        meta_path = self._data_dir / "metadata.json"
         with meta_path.open("w", encoding="utf-8") as f:
             f.write(meta.model_dump_json(indent=2))
-        logger.info("Wrote metadata to %s", meta_path)
         return meta_path

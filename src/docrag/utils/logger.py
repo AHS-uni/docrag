@@ -16,12 +16,12 @@ def get_logger(
     Create or retrieve a configured logger for a given component.
 
     Args:
-        name: Name of the logger (also the key in `logging_settings.log_files`).
-        level: Logging level (e.g. `logging.INFO`).
-        log_file_path: Optional override path. If None, uses the path from settings.
+        name (str): Name of the logger (also the key in `logging_settings.log_files`).
+        level (int): Logging level (e.g. `logging.INFO`).
+        log_file_path (Path): Optional override path. If None, uses the path from settings.
 
     Returns:
-        A configured `logging.Logger` instance.
+        logging.Logger: A configured logger.
 
     Raises:
         ValueError: If no log file is configured for `name` in settings.

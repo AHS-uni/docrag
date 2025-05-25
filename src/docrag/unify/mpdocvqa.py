@@ -25,44 +25,21 @@ class MPDocVQAUnifier(BaseUnifier[MPDocVQARaw]):
     Unifier for the MP-DocVQA competition dataset.
     """
 
-    def discover_raw(self) -> list[Path]:
-        """
-        Discover raw MP-DocVQA JSON files.
-
-        Globs all `.json` files under the `raw_qas_dir`.
-
-        Returns:
-            List[Path]: Sorted list of paths to raw QA JSON files.
-        """
+    def _discover_raw_qas(self) -> list[Path]:
+        # All of the MPDocVQA files are plain JSON under raw_qas/
         return sorted(self.raw_qas_dir.glob("*.json"))
 
-    def load_raw(self, path: Path) -> list[MPDocVQARaw]:
-        """
-        Load and validate raw entries from a JSON file.
-
-        The file must contain a top-level `"data"` array of QA objects.
-
-        Args:
-            path (Path): Path to the raw JSON file.
-
-        Returns:
-            List[MPDocVQARaw]: Parsed and validated raw entries.
-        """
+    def _load_raw_qas(self, path: Path) -> list[MPDocVQARaw]:
+        # Entries are in a top level 'data' array
         payload = json.loads(path.read_text(encoding="utf-8"))
         return [MPDocVQARaw.model_validate(item) for item in payload["data"]]
 
-    def convert_entry(self, raw: MPDocVQARaw) -> UnifiedEntry:
+    def _convert_qa_entry(self, raw: MPDocVQARaw) -> UnifiedEntry:
         """
         Map a raw MP-DocVQA entry into the unified schema.
 
         For train/val splits, wraps each raw answer list into an `Answer` object.
         For the test split (competition data), leaves `answer` and `evidence` as None.
-
-        Args:
-            raw (MPDocVQARaw): A single raw MP-DocVQA example.
-
-        Returns:
-            UnifiedEntry: The normalized entry ready for downstream use.
         """
         # Build the Question model
         question = Question(

@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Dict, Optional, Union
 
 from datasets import (
     load_dataset,
@@ -13,6 +12,7 @@ from datasets import (
     ClassLabel,
     Image,
 )
+from huggingface_hub import HfApi, CommitInfo
 
 from docrag.schema.enums import QuestionType, DocumentType, EvidenceSource, AnswerFormat
 
@@ -21,12 +21,14 @@ __all__ = [
     "build_qa_features",
     "load_corpus_dataset",
     "load_qa_dataset",
-    "load_dataset_dict",
+    "push_dataset_to_hub",
 ]
 
 
 def build_corpus_features() -> Features:
-    """Features spec for a page-level corpus (one JSONL line per page)."""
+    """
+    Features spec for a page-level corpus (one JSONL line per page).
+    """
     return Features(
         {
             "doc_id": Value("string"),
@@ -37,7 +39,9 @@ def build_corpus_features() -> Features:
 
 
 def build_qa_features() -> Features:
-    """Features spec for QA entries matching unified schema."""
+    """
+    Features spec for QA entries matching unified schema.
+    """
     q_types = [e.value for e in QuestionType]
     d_types = [e.value for e in DocumentType]
     e_sources = [e.value for e in EvidenceSource]
@@ -71,19 +75,19 @@ def build_qa_features() -> Features:
 
 
 def load_corpus_dataset(
-    dataset_root: Union[str, Path],
+    dataset_root: str | Path,
     corpus_file: str = "corpus.jsonl",
     cast_image: bool = True,
     streaming: bool = False,
-) -> Union[Dataset, IterableDataset]:
+) -> Dataset | IterableDataset:
     """
     Load the page-level corpus as a Hugging Face Dataset.
 
     Args:
         dataset_root: root folder containing corpus.jsonl and documents/
-        corpus_file:  name of the JSONL manifest (default "corpus.jsonl")
-        cast_image:   whether to cast 'image_path' → Image()
-        streaming:    if True, returns an IterableDataset
+        corpus_file: name of the JSONL manifest (default "corpus.jsonl")
+        cast_image: whether to cast 'image_path' → Image()
+        streaming: if True, returns an IterableDataset
 
     Returns:
         Dataset or IterableDataset with columns [doc_id, page_number, image_path].
@@ -103,29 +107,29 @@ def load_corpus_dataset(
 
 
 def load_qa_dataset(
-    dataset_root: Union[str, Path],
-    splits: Optional[Dict[str, str]] = None,
+    dataset_root: str | Path,
+    splits: dict[str, str] | None = None,
     include_images: bool = False,
     streaming: bool = False,
-) -> Union[DatasetDict, IterableDatasetDict]:
+) -> DatasetDict | IterableDatasetDict:
     """
     Load QA splits into a DatasetDict (or IterableDatasetDict),
     with optional 'evidence_images'.
 
     Args:
-        dataset_root:   root folder containing unified_qas/ and documents/
-        splits:         dict mapping split names → unified_qas/*.jsonl
+        dataset_root: root folder containing unified_qas/ and documents/
+        splits: dict mapping split names → unified_qas/*.jsonl
         include_images: if True, adds and casts an 'evidence_images' column
-        streaming:      if True, returns an IterableDatasetDict
+        streaming: if True, returns an IterableDatasetDict
 
     Returns:
         DatasetDict or IterableDatasetDict with keys train/val/test.
     """
     root = Path(dataset_root)
     default = {
-        "train": "unified_qas/train.jsonl",
-        "val": "unified_qas/val.jsonl",
-        "test": "unified_qas/test.jsonl",
+        "train": "qas/train.jsonl",
+        "val": "qas/val.jsonl",
+        "test": "qas/test.jsonl",
     }
     splits = splits or default
     features = build_qa_features()
@@ -152,26 +156,64 @@ def load_qa_dataset(
     return ds
 
 
-def load_dataset_dict(
-    dataset_root: Union[str, Path],
-    corpus_file: str = "corpus.jsonl",
-    qa_splits: Optional[Dict[str, str]] = None,
-    include_images: bool = False,
-) -> DatasetDict:
-    """
-    Load both corpus and QA datasets into one DatasetDict:
+# def load_dataset_dict(
+#     dataset_root: Union[str, Path],
+#     corpus_file: str = "corpus.jsonl",
+#     qa_splits: Optional[Dict[str, str]] = None,
+#     include_images: bool = False,
+#     streaming: bool = False,
+# ) -> DatasetDict:
+#     """
+#     Load both corpus and QA datasets into one DatasetDict:
 
-        {
-          "corpus": Dataset,
-          "qa":     DatasetDict(...)
-        }
+#         {
+#           "corpus": Dataset,
+#           "qa":     DatasetDict(...)
+#         }
+
+#     Args:
+#         dataset_root:   root folder path
+#         corpus_file:    name of the corpus manifest JSONL
+#         qa_splits:      override default QA splits if desired
+#         include_images: whether to include 'evidence_images'
+#     """
+#     corpus = load_corpus_dataset(dataset_root, corpus_file)
+#     qa = load_qa_dataset(dataset_root, qa_splits, include_images)
+#     return DatasetDict({"corpus": corpus, "qa": qa})
+
+
+def push_dataset_to_hub(
+    dataset: Dataset | DatasetDict,
+    repo_id: str,
+    token: str | None = None,
+    private: bool = False,
+    commit_message: str | None = None,
+    revision: str = "master",
+) -> CommitInfo:
+    """
+    Pushes a Hugging Face Dataset or DatasetDict to the Hugging Face Hub.
 
     Args:
-        dataset_root:   root folder path
-        corpus_file:    name of the corpus manifest JSONL
-        qa_splits:      override default QA splits if desired
-        include_images: whether to include 'evidence_images'
+        dataset: Dataset or DatasetDict to push.
+        repo_id: The repository ID (e.g., "username/dataset_name").
+        token: Optional HF access token.
+        private: Whether to create a private dataset.
+        commit_message: Message for the commit (defaults to "Upload dataset").
+        revision: Branch to push to (defaults to "master").
     """
-    corpus = load_corpus_dataset(dataset_root, corpus_file)
-    qa = load_qa_dataset(dataset_root, qa_splits, include_images)
-    return DatasetDict({"corpus": corpus, "qa": qa})
+    api = HfApi()
+    api.create_repo(
+        repo_id=repo_id,
+        repo_type="dataset",
+        token=token,
+        private=private,
+        exist_ok=True,
+    )
+
+    return dataset.push_to_hub(
+        repo_id=repo_id,
+        token=token,
+        private=private,
+        commit_message=commit_message,
+        revision=revision,
+    )
