@@ -110,7 +110,7 @@ poetry install --with dev
 
 ```bash
 conda activate docrag-gpu                   # or docrag-cpu
-conda install -c nvidia <package-name>
+conda install -c  <package-name>
 conda env export --name docrag-gpu --no-builds > environment-gpu.yml
 git add environment-gpu.yml
 git commit -m "deps(gpu): added <package-name> <version>"
