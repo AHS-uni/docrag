@@ -1,0 +1,11 @@
+name: docrag-cpu
+channels:
+  - pytorch           # CPU-only PyTorch wheel
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - pytorch=2.6.0      # CPU build
+  - faiss-cpu=1.11.0
+  - jupyter
+  - ipykernel

@@ -1,0 +1,29 @@
+# (CUDA 12.4)
+name: docrag-gpu
+channels:
+  - pytorch           # PyTorch CPU wheels & meta-pkgs
+  - nvidia            # CUDA 12.x runtime libs pulled by pytorch-cuda meta-pkg
+  - rapidsai          # cuVS-enabled Faiss
+  - conda-forge
+dependencies:
+  # --- core toolchain
+  - python=3.12
+  - pip                           # Poetry and any wheel-only deps will use this
+  # --- CUDA 12.4 runtime stack
+  - pytorch-cuda=12.4             # pulls libcudart, cuBLAS, cuDNN, NCCL, etc.
+  # --- Faiss with GPU + cuVS kernels
+  - faiss-gpu-cuvs=1.11.0
+  # --- notebook support
+  - jupyter
+  - ipykernel
+  # --- pip section (pull PyTorch 2.6.0 cu124 wheels)
+  - pip:
+      # The official PyTorch wheel repo for cu124:
+      - --index-url https://download.pytorch.org/whl/cu124
+      - torch==2.6.0+cu124
+      - torchvision==0.21.0+cu124
+      - torchaudio==2.6.0+cu124
+      # Temporary workaround for missing bundled libs (remove once fixed):
+      - nvidia-cudnn-cu12
+      - nvidia-nvtx-cu12
+      - pytorch-triton==2.6
