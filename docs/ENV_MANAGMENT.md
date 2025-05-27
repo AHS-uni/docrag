@@ -44,7 +44,7 @@ You probably won't need to interact with these files directly but it's useful to
 
 ```bash
 # 1. Create the Conda environment from the CPU config
-conda env create -f environment-cpu.yml
+conda env create -f environment_cpu.yml
 
 # 2. Activate the environment
 conda activate docrag-cpu
@@ -57,7 +57,7 @@ poetry install --with dev
 #### On a GPU workstation (CUDA 12.4)
 ```bash
 # 1. Create the Conda environment from the GPU config
-conda env create -f environment-gpu.yml
+conda env create -f environment_gpu.yml
 
 # 2. Activate the environment
 conda activate docrag-gpu
@@ -84,10 +84,10 @@ poetry install --with dev
 
 ```bash
 # CPU machine
-conda env update -n docrag-cpu -f environment-cpu.yml --prune
+conda env update -n docrag-cpu -f environment_cpu.yml --prune
 
 # GPU machine
-conda env update -n docrag-gpu -f environment-gpu.yml --prune
+conda env update -n docrag-gpu -f environment_gpu.yml --prune
 ```
 
 Then:
@@ -111,9 +111,9 @@ poetry install --with dev
 ```bash
 conda activate docrag-gpu                   # or docrag-cpu
 conda install <package-name>
-conda env export --name docrag-gpu --no-builds > environment-gpu.yml
+conda env export --name docrag-gpu --no-builds | grep -v '^prefix:' > environment_gpu.yml
 git add environment-gpu.yml
-git commit -m "deps(gpu): added <package-name> <version>"
+git commit -m "Added <package-name> <version> to env using Conda."
 ```
 
 **Always refer to the library or package installation guide for the exact installation command. Some packages require specifying a channel.**
@@ -125,7 +125,7 @@ conda activate docrag-cpu                   # ensure env active
 poetry add <package-name>
 poetry lock
 git add pyproject.toml poetry.lock
-git commit -m "feat: added <package-name>"
+git commit -m "Added <package-name> <version> to env using Poetry."
 ```
 
 >  Installing the latest version of a package may not always be compatible, use `<package-name>@<version>` or `<package-name>=<version>` for more control.
