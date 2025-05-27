@@ -110,10 +110,10 @@ poetry install --with dev
 
 ```bash
 conda activate docrag-gpu                   # or docrag-cpu
-conda install -c nvidia flash-attn=2.5      # example
+conda install -c nvidia <package-name>
 conda env export --name docrag-gpu --no-builds > environment-gpu.yml
 git add environment-gpu.yml
-git commit -m "deps(gpu): add flash‑attn 2.5"
+git commit -m "deps(gpu): added <package-name> <version>"
 ```
 
 ### 4.2  Install **with Poetry** (pure‑Python lib)
@@ -121,12 +121,12 @@ git commit -m "deps(gpu): add flash‑attn 2.5"
 ```bash
 conda activate docrag-cpu                   # ensure env active
 poetry add <package-name>
-poetry lock --no-update
+poetry lock
 git add pyproject.toml poetry.lock
-git commit -m "feat: add typer CLI helper"
+git commit -m "feat: added <package-name>"
 ```
 
->  Installing the latest version of a package may not always be compatible use `<package-name>@<version>` for more control.
+>  Installing the latest version of a package may not always be compatible, use `<package-name>@<version>` or `<package-name>=<version>` for more control.
 
 ---
 
