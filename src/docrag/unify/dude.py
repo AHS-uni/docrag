@@ -30,8 +30,8 @@ class DUDEUnifier(BaseUnifier[DUDERaw]):
         payload = json.loads(path.read_text(encoding="utf-8"))
         return [DUDERaw.model_validate(item) for item in payload["data"]]
 
+    @staticmethod
     def _unify_variants(
-        self,
         answers: list | None,
         answers_variants: list | None,
         *,

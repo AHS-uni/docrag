@@ -1,5 +1,6 @@
 """
-Abstract base classes for processing datasets and their entries.
+Abstract base class for processing datasets and their entries into the
+unified format.
 """
 
 from __future__ import annotations
@@ -8,6 +9,7 @@ from pathlib import Path
 from typing import Generic, TypeVar
 import shutil
 import tempfile
+import logging
 
 from docrag.schema import (
     BaseRawEntry,
@@ -25,15 +27,17 @@ RawT = TypeVar("RawT", bound=BaseRawEntry)
 
 class BaseUnifier(ABC, Generic[RawT]):
     """
-    Convert raw dataset entries into the unified schema and write them to disk.
+    Abstract base class for processing datasets and their entries into the
+    unified format.
 
     Attributes:
-        name: Unique identifier for the dataset.
-        data_dir: Root directory with `raw/` and `unified/` subdirectories.
+        name (str): Unique identifier for the dataset.
+        data_dir (Path): Root directory with `raw/` and `unified/` subdirectories.
+        remove_insane (bool): Whether to discard problematic entries.
     """
 
     def __init__(
-        self, name: str, data_dir: Path, *, remove_insane: bool = False
+        self, *, name: str, data_dir: Path, remove_insane: bool = False
     ) -> None:
         """
         Args:
@@ -41,9 +45,8 @@ class BaseUnifier(ABC, Generic[RawT]):
             data_dir: Base path containing raw data and where unified output will go.
             remove_insane: Whether to discard problematic entries or not.
         """
-        self._name = name
-        self._data_dir = data_dir
-
+        self.name = name
+        self.data_dir = data_dir
         self.remove_insane = remove_insane
 
         # Raw inputs
@@ -62,34 +65,42 @@ class BaseUnifier(ABC, Generic[RawT]):
 
         # Logger
         self.logger = get_logger(
-            name=self.__class__.__name__, level=10, log_file_path=Path("logs/unify.log")
+            name=self.__class__.__name__,
+            level=logging.DEBUG,
+            log_file_path=Path("logs/unify.log"),
         )
 
     @property
     def raw_qas_dir(self) -> Path:
-        """Directory containing raw QA files."""
-        return self._data_dir / "raw_qas"
+        """
+        Directory containing raw QA files.
+        """
+        return self.data_dir / "raw_qas"
 
     @property
     def raw_documents_dir(self) -> Path:
-        """Directory containing raw document files."""
-        return self._data_dir / "raw_documents"
+        """
+        Directory containing raw document files.
+        """
+        return self.data_dir / "raw_documents"
 
     @property
     def documents_dir(self) -> Path:
-        """Directory containing (processed) document files."""
-        return self._data_dir / "documents"
+        """
+        Directory containing (processed) document files.
+        """
+        return self.data_dir / "documents"
 
     @property
     def qas_dir(self) -> Path:
-        """Directory containing unified/processed QA files."""
-        return self._data_dir / "unified_qas"
+        """
+        Directory containing unified/processed QA files.
+        """
+        return self.data_dir / "unified_qas"
 
     def unify(self) -> Path:
         """
         Run the full dataset unification pipeline.
-
-        This is the one public method subclasses will call. It performs these steps:
 
         1. Discover raw QA files and (if needed) raw document files.
         2. Convert any raw documents into the `documents/` layout.
@@ -109,7 +120,7 @@ class BaseUnifier(ABC, Generic[RawT]):
             ConversionError: If a raw document fails to convert.
             ValueError: If sanity checks fail (missing pages).
         """
-        self.logger.info("Starting unification for dataset %s", self._name)
+        self.logger.info("Starting unification for dataset %s", self.name)
         # 1) Find raw inputs
         self._discover_raw()
         self.logger.info(
@@ -157,7 +168,7 @@ class BaseUnifier(ABC, Generic[RawT]):
         """
         Discover all raw QA files and raw document files (if needed).
 
-        Populates the following attributes:
+        Populates:
             _raw_qas_files (list[Path]):
                 A list of paths for each raw QA split file.
             _raw_document_files (list[Path]):
@@ -215,7 +226,7 @@ class BaseUnifier(ABC, Generic[RawT]):
         """
         Load the processed document corpus into memory.
 
-        Populates the following attributes:
+        Populates:
             _corpus_records (list[tuple[str, int, Path]]):
                 A list of (doc_id, page_number, image_path) for every page.
             _corpus_index (set[tuple[str, int]]):
@@ -269,6 +280,10 @@ class BaseUnifier(ABC, Generic[RawT]):
     def _convert_raw_qas(self) -> dict[str, list[UnifiedEntry]]:
         """
         Convert all raw QA files into unified entries, grouped by split.
+
+        Populates:
+            _splits(list[DatasetSplit]): List of the splits in this dataset and their metadata
+            _total_questions(int): Total number of questions across all splits.
 
         Returns:
             dict[str, list[UnifiedEntry]]: Mapping from split name to list of
@@ -327,7 +342,7 @@ class BaseUnifier(ABC, Generic[RawT]):
             return
 
         # Write to a temporary directory then swap
-        tmp_dir = self._data_dir / ".tmp_documents"
+        tmp_dir = self.data_dir / ".tmp_documents"
         if tmp_dir.exists():
             shutil.rmtree(tmp_dir)
         tmp_dir.mkdir()
@@ -351,7 +366,8 @@ class BaseUnifier(ABC, Generic[RawT]):
         )
 
     def _convert_document(self, raw_path: Path, output_dir: Path) -> None:
-        """Convert one raw document file into a directory of JPEG pages.
+        """
+        Convert one raw document file into a directory of JPEG pages.
 
         By default, this assumes PDF input and delegates to a shared utility.
         Subclasses may override if they require a different conversion pipeline.
@@ -374,7 +390,7 @@ class BaseUnifier(ABC, Generic[RawT]):
         populate `self._corpus_index`.
 
         Args:
-            entries: A list of `UnifiedEntry` objects whose `evidence.pages`
+            entries (list[UnifiedEntry]): A list of `UnifiedEntry` objects whose `evidence.pages`
                 should be validated against the known corpus.
 
         Raises:
@@ -431,7 +447,7 @@ class BaseUnifier(ABC, Generic[RawT]):
             )
 
         # write to tmp file then swap
-        tmp_path = self._data_dir / "corpus.jsonl.tmp"
+        tmp_path = self.data_dir / "corpus.jsonl.tmp"
         with tmp_path.open("w", encoding="utf-8") as f:
             for doc_id, page_num, img_path in self._corpus_records:
                 page = CorpusPage(
@@ -439,7 +455,7 @@ class BaseUnifier(ABC, Generic[RawT]):
                 )
                 f.write(page.model_dump_json())
                 f.write("\n")
-        output_path = self._data_dir / "corpus.jsonl"
+        output_path = self.data_dir / "corpus.jsonl"
         tmp_path.replace(output_path)
         return output_path
 
@@ -455,7 +471,7 @@ class BaseUnifier(ABC, Generic[RawT]):
             Path: The path to the `qas/` directory containing all split files.
         """
         # Write to a temporary directory then swap
-        tmp_dir = self._data_dir / ".tmp_qas"
+        tmp_dir = self.data_dir / ".tmp_qas"
         if tmp_dir.exists():
             shutil.rmtree(tmp_dir)
         tmp_dir.mkdir()
@@ -481,13 +497,13 @@ class BaseUnifier(ABC, Generic[RawT]):
             Path: The path to the written metadata.json file.
         """
         meta = DatasetMetadata(
-            name=self._name,
+            name=self.name,
             num_documents=self._num_documents,
             num_pages=self._num_pages,
             num_questions=self._total_questions,
             splits=self._splits,
         )
-        meta_path = self._data_dir / "metadata.json"
+        meta_path = self.data_dir / "metadata.json"
         with meta_path.open("w", encoding="utf-8") as f:
             f.write(meta.model_dump_json(indent=2))
         return meta_path
