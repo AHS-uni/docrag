@@ -110,11 +110,13 @@ poetry install --with dev
 
 ```bash
 conda activate docrag-gpu                   # or docrag-cpu
-conda install -c  <package-name>
+conda install <package-name>
 conda env export --name docrag-gpu --no-builds > environment-gpu.yml
 git add environment-gpu.yml
 git commit -m "deps(gpu): added <package-name> <version>"
 ```
+
+**Always refer to the library or package installation guide for the exact installation command. Some packages require specifying a channel.**
 
 ### 4.2  Install **with Poetry** (pure‑Python lib)
 
