@@ -71,7 +71,7 @@ poetry install --with dev
 
 ### 3.2 Syncing after a `git pull`
 
-After pulling from `main` or another branch, use the following to make sure your environment is fully up to date.
+After pulling from `master` or another branch, use the following to make sure your environment is fully up to date.
 
 ####  Pure-Python updates (Poetry changes only)
 
