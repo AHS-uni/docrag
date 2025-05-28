@@ -188,6 +188,7 @@ class BaseUnifier(ABC, Generic[RawT]):
         else:
             self._raw_document_files = self._discover_raw_documents()
 
+    @abstractmethod
     def _discover_raw_qas(self) -> list[Path]:
         """
         Discover all raw QA files ('.json' or '.jsonl') under the QA directory.
@@ -195,10 +196,7 @@ class BaseUnifier(ABC, Generic[RawT]):
         Returns:
             list[Path]: A sorted list of paths to raw QA files.
         """
-        files: list[Path] = []
-        for ext in ("*.json", "*.jsonl"):
-            files.extend((self.raw_qas_dir).glob(ext))
-        return sorted(files)
+        ...
 
     def _discover_raw_documents(self):
         """
@@ -382,7 +380,9 @@ class BaseUnifier(ABC, Generic[RawT]):
         """
         pass
 
-    def _sanity_check(self, entries: list[UnifiedEntry]) -> None:
+    def _sanity_check(
+        self, entries: list[UnifiedEntry]
+    ) -> None:  # TODO: ADD PAGE LEVEL CHECKS
         """
         Verify that every evidence page in the unified entries exists in the corpus.
 
