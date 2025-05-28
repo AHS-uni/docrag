@@ -119,6 +119,7 @@ class EvidenceSource(str, Enum):
         TABLE: Tabular structure.
         CHART: Plot, graph, or quantitative visual.
         IMAGE: Non-chart visual (diagram, photo).
+        LAYOUT: Page layout or structure.
         NONE: No identifiable evidence source.
         OTHER: Any other source type.
         MISSING: Marks the field as needing downstream imputation.
@@ -128,6 +129,7 @@ class EvidenceSource(str, Enum):
     TABLE = "table"
     CHART = "chart"
     IMAGE = "image"
+    LAYOUT = "layout"
     NONE = "none"
     OTHER = "other"
     MISSING = "missing"
