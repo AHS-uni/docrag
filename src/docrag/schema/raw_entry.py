@@ -15,7 +15,7 @@ class BaseRawEntry(BaseModel):
 
 class MPDocVQARaw(BaseRawEntry):
     """
-    Schema for a single MP-DocVQA example, exactly mirroring the JSON keys.
+    Schema for a single MP-DocVQA example.
     """
 
     question_id: int = Field(alias="questionId")
@@ -50,7 +50,7 @@ class AnswerBoundingBox(BaseModel):
 
 class DUDERaw(BaseRawEntry):
     """
-    Schema for a DUDE QA example, mirroring the JSON keys from your dataset.
+    Schema for a single DUDE QA example.
     """
 
     question_id: str = Field(alias="questionId")
@@ -60,6 +60,29 @@ class DUDERaw(BaseRawEntry):
     answers_variants: list[str] | None = None
     answer_type: str | None = None
     doc_id: str = Field(alias="docId")
+    data_split: str
+
+    model_config = {
+        "populate_by_name": True,
+        "frozen": True,
+    }
+
+
+### MMLongBenchDoc ###
+
+
+class MMLongBenchDocRaw(BaseRawEntry):
+    """
+    Schema for a single MMLongBench-Doc example.
+    """
+
+    doc_id: str
+    doc_type: str
+    question: str
+    answer: str | float | int | list | None
+    evidence_pages: list[int]
+    evidence_sources: list[str]
+    answer_format: str
     data_split: str
 
     model_config = {
