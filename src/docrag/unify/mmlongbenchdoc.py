@@ -1,7 +1,7 @@
 from pathlib import Path
 import json
 
-from docrag.schema.enums import AnswerFormat, AnswerType, EvidenceSource
+from docrag.schema.enums import AnswerFormat, AnswerType, EvidenceSource, DocumentType
 from docrag.schema.raw_entry import MMLongBenchDocRaw
 from docrag.unify.base import BaseUnifier
 from docrag.schema import (
@@ -25,16 +25,16 @@ class MMLongBenchDocUnifier(BaseUnifier[MMLongBenchDocRaw]):
     def _load_raw_qas(self, path: Path) -> list[MMLongBenchDocRaw]:
         # Load the JSON data
         data = json.loads(path.read_text(encoding="utf-8"))
-
+        
         # Extract the dataset split from the filename (e.g., "train.json" -> "train")
         split = path.stem
-
+        
         # For each entry, add the data_split field
         raw_entries = []
         for item in data:
-            item["data_split"] = split  # UNNECESSARY: MMLONGBENCHDOC HAS ONLY ONE SPLIT
+            item["data_split"] = split
             raw_entries.append(MMLongBenchDocRaw.model_validate(item))
-
+            
         return raw_entries
 
     def _convert_qa_entry(self, raw: MMLongBenchDocRaw) -> UnifiedEntry:
@@ -43,20 +43,19 @@ class MMLongBenchDocUnifier(BaseUnifier[MMLongBenchDocRaw]):
         """
         # Build the Question model
         question = Question(
-            id=f"{raw.doc_id}-{len(raw.question)}",  # Create an ID if none exists # UNNECESSARY: JUST USE QUESTION ID FROM RAW DATASET
+            id=f"q{hash(raw.question) % 10000}",  # Create a unique question ID
             text=raw.question,
         )
 
         # Build the Document model
+        # Use corpus records to count pages
+        page_numbers = [p for (doc, p, _) in self._corpus_records if doc == raw.doc_id]
+        num_pages = len(page_numbers) if page_numbers else 1
+        
         document = Document(
             id=raw.doc_id,
-            type=raw.doc_type,  # TODO: IMPLEMENT MAPPING FUNCTION FOR DOCUMENT TYPES "type 'str' cannot be assigned to parameter of type 'DocumentType'"
-            # Since we don't have explicit page count, use the highest page number
-            num_pages=(
-                max(raw.evidence_pages) + 1 if raw.evidence_pages else 1
-            ),  # NOT A VALID METHOD TO GET THE PAGE COUNT
-            # TODO: USE THE SUPERCLASS ATTRIBUTE '_corpus_records' TO CALCULATE PAGE COUNTS
-            # SEE LINES 103, 104 IN 'dude.py'
+            type=self._map_document_type(raw.doc_type),
+            num_pages=num_pages,
         )
 
         # Build the Evidence model
@@ -68,23 +67,30 @@ class MMLongBenchDocUnifier(BaseUnifier[MMLongBenchDocRaw]):
         # Build the Answer model
         answer_format = self._map_answer_format(raw.answer_format)
         answer = Answer(
-            type=(
-                AnswerType.NOT_ANSWERABLE
-                if raw.answer is None
-                else AnswerType.ANSWERABLE
-            ),
+            type=AnswerType.NOT_ANSWERABLE if raw.answer is None else AnswerType.ANSWERABLE,
             variants=[str(raw.answer)] if raw.answer is not None else [],
             format=answer_format,
         )
 
+        # If answerable but no evidence pages found, use all document pages
+        if evidence.pages == [] and answer.type == AnswerType.ANSWERABLE:
+            evidence = Evidence(pages=page_numbers)
+            if evidence.pages == []:  # still no evidence
+                self.logger.debug(
+                    "Skipping entry with question '%s'. Unable to find evidence pages for document %s.",
+                    raw.question[:30] + "..." if len(raw.question) > 30 else raw.question,
+                    raw.doc_id,
+                )
+                return None  # Skip this entry due to missing evidence
+
         return UnifiedEntry(
-            id=f"{raw.doc_id}-{hash(raw.question) % 10000}",  # Create a unique ID # UNNECESSARY:  '<doc-id>_<question_id>' IS SUFFICIENT
+            id=f"{raw.doc_id}_{question.id}",
             question=question,
             document=document,
             evidence=evidence,
             answer=answer,
         )
-
+        
     def _map_evidence_sources(self, sources: list[str]) -> list[EvidenceSource]:
         """
         Map the MMLongBench-Doc evidence sources to EvidenceSource enum values.
@@ -93,11 +99,11 @@ class MMLongBenchDocUnifier(BaseUnifier[MMLongBenchDocRaw]):
             "Pure-text (Plain-text)": EvidenceSource.SPAN,
             "Chart": EvidenceSource.CHART,
             "Table": EvidenceSource.TABLE,
-            "Generalized-text (Layout)": EvidenceSource.SPAN,  # TODO: CHANGE TO 'LAYOUT'
+            "Generalized-text (Layout)": EvidenceSource.OTHER,  # No LAYOUT in EvidenceSource enum
         }
-
+        
         return [source_mapping.get(source, EvidenceSource.OTHER) for source in sources]
-
+        
     def _map_answer_format(self, format_str: str) -> AnswerFormat:
         """
         Map the MMLongBench-Doc answer format to AnswerFormat enum values.
@@ -109,8 +115,31 @@ class MMLongBenchDocUnifier(BaseUnifier[MMLongBenchDocRaw]):
             "List": AnswerFormat.LIST,
             "None": AnswerFormat.NONE,
         }
-
+        
         return format_mapping.get(format_str, AnswerFormat.OTHER)
-
-    def _map_document_type(self, doc_type):  # TODO
-        pass
+        
+    def _map_document_type(self, doc_type: str) -> DocumentType:
+        """
+        Map the MMLongBench-Doc document types to DocumentType enum values.
+        """
+        # Map common document types to their corresponding enum values
+        doc_type_lower = doc_type.lower()
+        
+        if "research" in doc_type_lower or "article" in doc_type_lower:
+            return DocumentType.SCIENTIFIC
+        elif "report" in doc_type_lower:
+            return DocumentType.TECHNICAL
+        elif "tutorial" in doc_type_lower or "workshop" in doc_type_lower:
+            return DocumentType.TECHNICAL
+        elif "policy" in doc_type_lower:
+            return DocumentType.POLICY
+        elif "legal" in doc_type_lower or "contract" in doc_type_lower:
+            return DocumentType.LEGAL
+        elif "news" in doc_type_lower:
+            return DocumentType.NEWS
+        elif "financial" in doc_type_lower:
+            return DocumentType.FINANCIAL
+        elif "correspondence" in doc_type_lower or "letter" in doc_type_lower:
+            return DocumentType.CORRESPONDENCE
+        else:
+            return DocumentType.OTHER 
