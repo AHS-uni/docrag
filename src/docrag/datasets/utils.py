@@ -20,6 +20,7 @@ from docrag.schema import (
     DocumentType,
     EvidenceSource,
     AnswerFormat,
+    TagName,
 )
 
 __all__ = [
@@ -53,6 +54,15 @@ def build_qa_features() -> Features:
     e_sources = [e.value for e in EvidenceSource]
     a_formats = [e.value for e in AnswerFormat]
     a_types = [e.value for e in AnswerType]
+    tag_names = [e.value for e in TagName]
+
+    tag_features = Features(
+        {
+            "name": ClassLabel(names=tag_names),
+            "target": Value("string"),
+            "comment": Value("string"),
+        }
+    )
 
     return Features(
         {
@@ -61,22 +71,27 @@ def build_qa_features() -> Features:
                 "id": Value("string"),
                 "text": Value("string"),
                 "type": ClassLabel(names=q_types),
+                "tags": [tag_features],
             },
             "document": {
                 "id": Value("string"),
                 "type": ClassLabel(names=d_types),
                 "num_pages": Value("int32"),
+                "tags": [tag_features],
             },
             "evidence": {
                 "pages": Sequence(Value("int32")),
                 "sources": Sequence(ClassLabel(names=e_sources)),
+                "tags": [tag_features],
             },
             "answer": {
                 "type": ClassLabel(names=a_types),
                 "variants": Sequence(Value("string")),
                 "rationale": Value("string"),
                 "format": ClassLabel(names=a_formats),
+                "tags": [tag_features],
             },
+            "tags": [tag_features],
         }
     )
 
@@ -91,13 +106,14 @@ def load_corpus_dataset(
     Load the page-level corpus as a Hugging Face Dataset.
 
     Args:
-        dataset_root: root folder containing corpus.jsonl and documents/
-        corpus_file: name of the JSONL manifest (default "corpus.jsonl")
-        cast_image: whether to cast 'image_path' → Image()
-        streaming: if True, returns an IterableDataset
+        dataset_root (str | Path): root folder containing corpus.jsonl and documents/
+        corpus_file (str): name of the JSONL manifest (default "corpus.jsonl")
+        cast_image (bool): whether to cast 'image_path' → Image()
+        streaming (bool): if True, returns an IterableDataset
 
     Returns:
-        Dataset or IterableDataset with columns [doc_id, page_number, image_path].
+        Dataset or IterableDataset with columns ['doc_id', 'page_number', 'image']
+        if cast_image is True, otherwise ['doc_id', 'page_number', 'image_path'].
     """
     root = Path(dataset_root)
     features = build_corpus_features()
@@ -109,7 +125,9 @@ def load_corpus_dataset(
         streaming=streaming,
     )
     if cast_image:
-        ds = ds.cast_column("image_path", Image())
+        ds = ds.rename_column("image_path", "image")
+        ds = ds.cast_column("image", Image())
+
     return ds
 
 

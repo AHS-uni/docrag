@@ -6,15 +6,31 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, model_validator
 
-from .enums import QuestionType, DocumentType, EvidenceSource, AnswerFormat, AnswerType
+from .enums import (
+    QuestionType,
+    DocumentType,
+    EvidenceSource,
+    AnswerFormat,
+    AnswerType,
+    TagName,
+)
 
-__all__ = [
-    "Question",
-    "Document",
-    "Evidence",
-    "Answer",
-    "UnifiedEntry",
-]
+__all__ = ["Question", "Document", "Evidence", "Answer", "UnifiedEntry", "Tag"]
+
+
+class Tag(BaseModel):
+    """
+    Annotation for an object or field.
+
+    Attributes:
+        name (TagName): Name of the annotation.
+        target (str): Associated field or object for the tag.
+        comment (str): Additional information for the tag (defaults to empty string).
+    """
+
+    name: TagName
+    target: str
+    comment: str = ""
 
 
 class Question(BaseModel):
@@ -22,14 +38,16 @@ class Question(BaseModel):
     A question posed in a QA example.
 
     Attributes:
-        id:   Unique identifier for the question.
-        text: The natural language text of the question.
-        type: High-level question category (defaults to "missing").
+        id (str): Unique identifier for the question.
+        text (str): The natural language text of the question.
+        type (QuestionType): High-level question category (defaults to "other").
+        tags (list[Tag]): List of tags for a field.
     """
 
     id: str
     text: str
-    type: QuestionType = QuestionType.MISSING
+    type: QuestionType = QuestionType.OTHER
+    tags: list[Tag] = Field(default_factory=list)
 
 
 class Document(BaseModel):
@@ -37,14 +55,16 @@ class Document(BaseModel):
     A document providing context for the question.
 
     Attributes:
-        id: Unique identifier for the document.
-        type: Primary document category (defaults to "missing").
-        num_pages: Number of pages in the document.
+        id (str): Unique identifier for the document.
+        type (DocumentType): Primary document category (defaults to "other").
+        num_pages (int): Number of pages in the document.
+        tags (list[Tag]): List of tags for a field.
     """
 
     id: str
-    type: DocumentType = DocumentType.MISSING
+    type: DocumentType = DocumentType.OTHER
     num_pages: int
+    tags: list[Tag] = Field(default_factory=list)
 
 
 class Evidence(BaseModel):
@@ -52,12 +72,16 @@ class Evidence(BaseModel):
     Content from the document used to support the answer.
 
     Attributes:
-        pages: Page numbers forming the evidence (defaults to empty list).
-        sources: Source types within the page(s) (defaults to empty list).
+        pages (list[int]): Page numbers forming the evidence (defaults to empty list).
+        sources (list[EvidenceSource]): Source types within the page(s) (defaults to ["other"]).
+        tags (list[Tag]): List of tags for a field.
     """
 
     pages: list[int] = Field(default_factory=list)
-    sources: list[EvidenceSource] = Field(default_factory=list)
+    sources: list[EvidenceSource] = Field(
+        default_factory=lambda: [EvidenceSource.OTHER]
+    )
+    tags: list[Tag] = Field(default_factory=list)
 
 
 class Answer(BaseModel):
@@ -65,16 +89,18 @@ class Answer(BaseModel):
     The acceptable answer(s) to a question.
 
     Attributes:
-        answerable: Whether the question is answerable.
-        variants:   List of valid answer variants (defaults to empty list).
-        rationale:  Explanation or justification (defaults to empty list).
-        format:     Expected answer format (defaults to "none").
+        answerable (AnswerType): Whether the question is answerable (defaults to "none").
+        variants (list[str]): List of valid answer variants (defaults to empty list).
+        rationale (str): Explanation or justification (defaults to empty string).
+        format (AnswerFormat): Expected answer format (defaults to "none").
+        tags (list[Tag]): List of tags for a field.
     """
 
     type: AnswerType = AnswerType.NONE
     variants: list[str] = Field(default_factory=list)
-    rationale: str = Field(default_factory=str)
+    rationale: str = ""
     format: AnswerFormat = AnswerFormat.NONE
+    tags: list[Tag] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_answer_fields(self):
@@ -106,11 +132,12 @@ class UnifiedEntry(BaseModel):
     A single QA example in the unified dataset.
 
     Attributes:
-        id:       Unique identifier for the entry.
-        question: The associated question.
-        document: The associated document.
-        evidence: Supporting evidence.
-        answer:   The answer object.
+        id (str): Unique identifier for the entry.
+        question (Question): The associated question.
+        document (Document): The associated document.
+        evidence (Evidence): Supporting evidence.
+        answer (Answer): The answer object.
+        tags (list[Tag]): List of tags for an object.
     """
 
     id: str
@@ -118,6 +145,7 @@ class UnifiedEntry(BaseModel):
     document: Document
     evidence: Evidence
     answer: Answer
+    tags: list[Tag] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_entry_fields(self):

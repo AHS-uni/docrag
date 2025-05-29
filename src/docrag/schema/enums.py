@@ -9,6 +9,7 @@ __all__ = [
     "DocumentType",
     "AnswerFormat",
     "EvidenceSource",
+    "TagName",
 ]
 
 
@@ -25,7 +26,6 @@ class QuestionType(str, Enum):
         PROCEDURAL: Request a workflow or set of steps.
         REASONING: Require multi-hop logic or causal explanation.
         OTHER: Catch-all for uncategorized questions.
-        MISSING: Marks the field as needing downstream imputation.
     """
 
     EXTRACTIVE = "extractive"
@@ -36,7 +36,6 @@ class QuestionType(str, Enum):
     PROCEDURAL = "procedural"
     REASONING = "reasoning"
     OTHER = "other"
-    MISSING = "missing"
 
 
 class DocumentType(str, Enum):
@@ -54,7 +53,6 @@ class DocumentType(str, Enum):
         PERSONAL_RECORD: IDs, resumes, academic records.
         NEWS: Newspaper or magazine articles.
         OTHER: Uncategorized or out-of-scope documents.
-        MISSING: Marks the field as needing downstream imputation.
     """
 
     LEGAL = "legal"
@@ -67,7 +65,6 @@ class DocumentType(str, Enum):
     PERSONAL_RECORD = "personal_record"
     NEWS = "news"
     OTHER = "other"
-    MISSING = "missing"
 
 
 class AnswerFormat(str, Enum):
@@ -82,7 +79,6 @@ class AnswerFormat(str, Enum):
         BOOLEAN: True/False or Yes/No.
         LIST: Ordered or unordered list of items.
         OTHER: Any other format not listed above.
-        MISSING: Marks the field as needing downstream imputation.
         NONE: Reserved for non-answerable questions.
     """
 
@@ -93,7 +89,6 @@ class AnswerFormat(str, Enum):
     BOOLEAN = "boolean"
     LIST = "list"
     OTHER = "other"
-    MISSING = "missing"
     NONE = "none"
 
 
@@ -119,15 +114,32 @@ class EvidenceSource(str, Enum):
         TABLE: Tabular structure.
         CHART: Plot, graph, or quantitative visual.
         IMAGE: Non-chart visual (diagram, photo).
-        NONE: No identifiable evidence source.
+        LAYOUT: Page layout or structure.
+        NONE: Reserved for non-answerable questions.
         OTHER: Any other source type.
-        MISSING: Marks the field as needing downstream imputation.
     """
 
     SPAN = "span"
     TABLE = "table"
     CHART = "chart"
     IMAGE = "image"
+    LAYOUT = "layout"
     NONE = "none"
     OTHER = "other"
+
+
+class TagName(str, Enum):
+    """
+    Kinds of data-quality or transformation flags.
+
+    Attributes:
+        MISSING: Value missing in original dataset and has been defaulted.
+        LOW_QUALITY: Value is of low quality.
+        INFERRED: Value has been filled in using a simple rule-based method.
+        PREDICTED: Value has been imputed using a probabilistic trained model.
+    """
+
     MISSING = "missing"
+    LOW_QUALITY = "low_quality"
+    INFERRED = "inferred"
+    PREDICTED = "predicted"

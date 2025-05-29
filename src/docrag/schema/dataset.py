@@ -4,7 +4,7 @@ Pydantic model for a single dataset.
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 __all__ = [
     "DatasetMetadata",
@@ -35,6 +35,8 @@ class DatasetMetadata(BaseModel):
         num_pages: Total number of pages across all documents.
         num_questions: Total number of questions across all splits.
         splits: List of dataset splits and their metadata.
+        tag_summary: Counts of tags emitted during unification
+        removal_summary: Counts of entries removed during sanity check
     """
 
     name: str
@@ -42,3 +44,5 @@ class DatasetMetadata(BaseModel):
     num_pages: int
     num_questions: int
     splits: list[DatasetSplit]
+    tag_summary: dict[str, dict[str, int]] = Field(default_factory=dict)
+    removal_summary: dict[str, int] = Field(default_factory=dict)

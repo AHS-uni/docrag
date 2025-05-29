@@ -8,8 +8,9 @@ from .enums import (
     AnswerFormat,
     EvidenceSource,
     AnswerType,
+    TagName,
 )
-from .unified_entry import UnifiedEntry, Question, Document, Evidence, Answer
+from .unified_entry import UnifiedEntry, Question, Document, Evidence, Answer, Tag
 from .raw_entry import BaseRawEntry
 from .corpus import CorpusPage
 from .dataset import DatasetMetadata, DatasetSplit
@@ -21,12 +22,14 @@ __all__ = [
     "AnswerFormat",
     "EvidenceSource",
     "AnswerType",
+    "TagName",
     # unified models
     "UnifiedEntry",
     "Question",
     "Document",
     "Evidence",
     "Answer",
+    "Tag",
     "CorpusPage",
     "DatasetMetadata",
     "DatasetSplit",

@@ -5,10 +5,10 @@ unified format.
 
 from __future__ import annotations
 from abc import ABC, abstractmethod
+from collections import Counter
 from pathlib import Path
 from typing import Generic, TypeVar
 import shutil
-import tempfile
 import logging
 
 from docrag.schema import (
@@ -17,6 +17,11 @@ from docrag.schema import (
     DatasetMetadata,
     DatasetSplit,
     CorpusPage,
+    Tag,
+    # Question,
+    # Document,
+    # Evidence,
+    # Answer,
 )
 from docrag.utils import get_logger
 
@@ -36,14 +41,12 @@ class BaseUnifier(ABC, Generic[RawT]):
         remove_insane (bool): Whether to discard problematic entries.
     """
 
-    def __init__(
-        self, *, name: str, data_dir: Path, remove_insane: bool = False
-    ) -> None:
+    def __init__(self, *, name: str, data_dir: Path, remove_insane=False) -> None:
         """
         Args:
-            name: Dataset name for file naming and metadata.
-            data_dir: Base path containing raw data and where unified output will go.
-            remove_insane: Whether to discard problematic entries or not.
+            name (str): Dataset name for file naming and metadata.
+            data_dir (Path): Base path containing raw data and where unified output will go.
+            remove_insane (bool): Whether to discard problematic entries.
         """
         self.name = name
         self.data_dir = data_dir
@@ -62,6 +65,14 @@ class BaseUnifier(ABC, Generic[RawT]):
         self._num_pages: int = 0
         self._total_questions: int = 0
         self._splits: list[DatasetSplit] = []
+        self._tag_summary: dict[str, Counter[str]] = {
+            "entry": Counter(),
+            "question": Counter(),
+            "document": Counter(),
+            "evidence": Counter(),
+            "answer": Counter(),
+        }
+        self._removal_summary: Counter[str] = Counter()
 
         # Logger
         self.logger = get_logger(
@@ -155,6 +166,14 @@ class BaseUnifier(ABC, Generic[RawT]):
         ]
         self._sanity_check(all_entries)
 
+        # Collect tag statistics
+        for ue in all_entries:
+            self._record_tags("entry", ue.tags)
+            self._record_tags("question", ue.question.tags)
+            self._record_tags("document", ue.document.tags)
+            self._record_tags("evidence", ue.evidence.tags)
+            self._record_tags("answer", ue.answer.tags)
+
         # 6) Write outputs
         corpus_path = self._write_corpus()
         self.logger.info("Wrote corpus to %s", corpus_path)
@@ -188,6 +207,7 @@ class BaseUnifier(ABC, Generic[RawT]):
         else:
             self._raw_document_files = self._discover_raw_documents()
 
+    @abstractmethod
     def _discover_raw_qas(self) -> list[Path]:
         """
         Discover all raw QA files ('.json' or '.jsonl') under the QA directory.
@@ -195,10 +215,7 @@ class BaseUnifier(ABC, Generic[RawT]):
         Returns:
             list[Path]: A sorted list of paths to raw QA files.
         """
-        files: list[Path] = []
-        for ext in ("*.json", "*.jsonl"):
-            files.extend((self.raw_qas_dir).glob(ext))
-        return sorted(files)
+        ...
 
     def _discover_raw_documents(self):
         """
@@ -299,8 +316,7 @@ class BaseUnifier(ABC, Generic[RawT]):
             )
             for raw in raw_entries:
                 ue = self._convert_qa_entry(raw)
-                if ue is not None:
-                    unified_list.append(ue)
+                unified_list.append(ue)
 
             self.logger.debug(
                 "Split %s converted to %d unified entries",
@@ -316,17 +332,53 @@ class BaseUnifier(ABC, Generic[RawT]):
         return split_map
 
     @abstractmethod
-    def _convert_qa_entry(self, raw: RawT) -> UnifiedEntry | None:
+    def _convert_qa_entry(self, raw: RawT) -> UnifiedEntry:
         """
         Map a raw entry into the unified schema.
 
         Args:
-            raw: A raw dataset entry.
+            raw (RawT): A raw dataset entry.
 
         Returns:
-            A UnifiedEntry instance.
+            UnifiedEntry: converted unified entry.
         """
         ...
+
+    # @abstractmethod
+    # def _build_question(self, raw: RawT) -> Question:
+    #     """
+    #     Build the Question model from a raw entry.
+    #     """
+    #     ...
+
+    # @abstractmethod
+    # def _build_document(self, raw: RawT) -> Document:
+    #     """
+    #     Build the Document model from a raw entry.
+    #     """
+    #     ...
+
+    # @abstractmethod
+    # def _build_evidence(self, raw: RawT) -> Evidence:
+    #     """
+    #     Build the Evidence model from a raw entry.
+    #     """
+    #     ...
+
+    # @abstractmethod
+    # def _build_answer(self, raw: RawT) -> Answer:
+    #     """
+    #     Build the Answer model from a raw entry.
+    #     """
+    #     ...
+
+    def _record_tags(self, level: str, tags: list[Tag]) -> None:
+        """
+        Increment counters for each Tag at the given object level.
+        """
+        for tag in tags:
+            key = f"{tag.target}.{tag.name.value}"
+            self._tag_summary[level][key] += 1
 
     def _convert_raw_documents(self) -> None:
         """
@@ -354,7 +406,6 @@ class BaseUnifier(ABC, Generic[RawT]):
             self.logger.debug(
                 "Converting raw document %s → %s", raw_path.name, output_dir
             )
-            # delegate to utility or subclass override
             self._convert_document(raw_path, output_dir)
 
         tmp_dir.rename(self.documents_dir)
@@ -384,51 +435,73 @@ class BaseUnifier(ABC, Generic[RawT]):
 
     def _sanity_check(self, entries: list[UnifiedEntry]) -> None:
         """
-        Verify that every evidence page in the unified entries exists in the corpus.
-
-        This method requires that `_load_corpus()` has already been called to
-        populate `self._corpus_index`.
+        Validate that entries reference existing pages and correct page counts.
 
         Args:
-            entries (list[UnifiedEntry]): A list of `UnifiedEntry` objects whose `evidence.pages`
-                should be validated against the known corpus.
+            entries (list[UnifiedEntry]): A list of unified entries to validate.
 
         Raises:
-            RuntimeError: If the corpus has not been loaded yet.
-            ValueError: If any entry references a (doc_id, page) not found in the corpus.
+            RuntimeError: If the corpus index is empty (i.e., `_load_corpus()`
+                was not called first.
+            ValueError: If any entry references missing pages or has a mismatched
+                `document.num_pages` and 'remove_insane' is false.
         """
         if not getattr(self, "_corpus_index", None):
-            raise RuntimeError(
-                "Corpus index is empty – call `_load_corpus()` before sanity check."
-            )
+            raise RuntimeError("Corpus index is empty – call `_load_corpus()` first.")
 
-        invalid_entries = []
+        actual_page_counts: dict[str, int] = {}
+        for doc_id, _, _ in self._corpus_records:
+            actual_page_counts[doc_id] = actual_page_counts.get(doc_id, 0) + 1
+
+        invalid_evidence: list[UnifiedEntry] = []
+        invalid_length: list[tuple[UnifiedEntry, int | None]] = []
+
         for ue in entries:
-            if ue.evidence:
-                for page_num in ue.evidence.pages:
-                    if (ue.document.id, page_num) not in self._corpus_index:
-                        invalid_entries.append(ue)
-                        break
+            actual = actual_page_counts.get(ue.document.id)
+            if actual is None or ue.document.num_pages != actual:
+                invalid_length.append((ue, actual))
+                continue
+            for page_num in ue.evidence.pages:
+                if (ue.document.id, page_num) not in self._corpus_index:
+                    invalid_evidence.append(ue)
+                    break
 
-        if invalid_entries:
+        if invalid_evidence or invalid_length:
             if self.remove_insane:
-                for ue in invalid_entries:
+                # Record counts
+                self._removal_summary["page_count_mismatch"] += len(invalid_length)
+                self._removal_summary["missing_pages"] += len(invalid_evidence)
+
+                # Log & remove
+                for ue, actual in invalid_length:
                     self.logger.warning(
-                        "Removing entry %s; referenced pages %s not in corpus",
+                        "Removing entry %s; declared %d pages but found %d",
+                        ue.id,
+                        ue.document.num_pages,
+                        actual or 0,
+                    )
+                for ue in invalid_evidence:
+                    self.logger.warning(
+                        "Removing entry %s; evidence pages %s not in corpus",
                         ue.id,
                         ue.evidence.pages,
                     )
-                    # drop them in place
-                entries[:] = [ue for ue in entries if ue not in invalid_entries]
+
+                entries[:] = [
+                    ue
+                    for ue in entries
+                    if all(ue is not bad for bad, _ in invalid_length)
+                    and ue not in invalid_evidence
+                ]
             else:
                 msgs = [
+                    f"{ue.id}: declared {ue.document.num_pages} pages but found {actual or 0}"
+                    for ue, actual in invalid_length
+                ] + [
                     f"{ue.id}: missing pages {ue.evidence.pages}"
-                    for ue in invalid_entries
+                    for ue in invalid_evidence
                 ]
-                raise ValueError(
-                    "Corpus sanity check failed for the following entries:\n  "
-                    + "\n  ".join(msgs)
-                )
+                raise ValueError("Sanity check failed:\n  " + "\n  ".join(msgs))
 
     def _write_corpus(self) -> Path:
         """
@@ -502,7 +575,12 @@ class BaseUnifier(ABC, Generic[RawT]):
             num_pages=self._num_pages,
             num_questions=self._total_questions,
             splits=self._splits,
+            tag_summary={
+                level: dict(counter) for level, counter in self._tag_summary.items()
+            },
+            removal_summary=dict(self._removal_summary),
         )
+
         meta_path = self.data_dir / "metadata.json"
         with meta_path.open("w", encoding="utf-8") as f:
             f.write(meta.model_dump_json(indent=2))
