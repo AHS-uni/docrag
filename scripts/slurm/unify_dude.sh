@@ -36,7 +36,7 @@ TOKEN = os.environ["TOKEN"]
 ROOT = Path("data/dude")
 
 # 1) Unify raw DUDE
-unifier = DUDEUnifier(name="DUDE", data_dir=ROOT, remove_insane=True)
+unifier = DUDEUnifier(name="DUDE", data_dir=ROOT)
 unifier.unify()
 
 # 2) Load & push corpus
