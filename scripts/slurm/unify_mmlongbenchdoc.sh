@@ -33,7 +33,7 @@ from docrag.datasets.utils import load_corpus_dataset, load_qa_dataset, push_dat
 TOKEN = os.environ["TOKEN"]
 ROOT = Path("data/mmlongbenchdoc")
 
-unifier = MMLongBenchDocUnifier(name="MMLongBenchDoc", data_dir=ROOT)
+unifier = MMLongBenchDocUnifier(name="MMLongBenchDoc", data_dir=ROOT, remove_insane=True)
 unifier.unify()
 
 corpus_ds = load_corpus_dataset(ROOT, cast_image=True, streaming=False)
