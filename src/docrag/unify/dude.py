@@ -91,8 +91,16 @@ class DUDEUnifier(BaseUnifier[DUDERaw]):
             ev.tags.append(tag_missing("sources"))
         else:
             ev.pages = [p for d, p, _ in self._corpus_records if d == raw.doc_id]
-            ev.tags.append(tag_missing("pages"))
-            ev.tags.append(tag_inferred("pages", "Set evidence pages to all pages."))
+            if ev.pages:
+                ev.tags.append(tag_missing("pages"))
+                ev.tags.append(
+                    tag_inferred("pages", "Set evidence pages to all pages.")
+                )
+            else:
+                ev.pages = [0]
+                ev.tags.append(
+                    tag_missing("pages", "Could not find document pages in corpus.")
+                )
         return ev
 
     def _build_answer(self, raw):

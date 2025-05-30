@@ -14,12 +14,10 @@ set -e
 # Load and activate conda environment
 module load Anaconda3
 eval "$(conda shell.bash hook)"
-conda activate "/cluster/users/hlwn057u2/.conda/envs/dev-env"
+conda activate "/cluster/users/hlwn057u2/.conda/envs/docrag-cpu"
 
 # Navigate to working directory
 cd /cluster/users/hlwn057u2/data/projects/docrag
-
-poetry install --no-interaction --no-ansi
 
 # Run python script
 
@@ -41,9 +39,9 @@ unifier.unify()
 
 # 2) Push corpus
 corpus_ds = load_corpus_dataset(ROOT, cast_image=True, streaming=False)
-push_dataset_to_hub(corpus_ds, repo_id="AHS-uni/mpdocvqa-corpus", token=TOKEN, commit_message="Upload MPDocVQA corpus.")
+push_dataset_to_hub(corpus_ds, repo_id="AHS-uni/mpdocvqa-corpus", token=TOKEN)
 
 # 3) Push QA splits
 qa_ds = load_qa_dataset(ROOT, include_images=False, streaming=False)
-push_dataset_to_hub(qa_ds, repo_id="AHS-uni/mpdocvqa-qa", token=TOKEN, commit_message="Upload MPDocVQA QA.")
+push_dataset_to_hub(qa_ds, repo_id="AHS-uni/mpdocvqa-qa", token=TOKEN, commit_message="Added tagging system.")
 PYCODE
