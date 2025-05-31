@@ -2,19 +2,23 @@
 The `datasets` package: utilities for loading and uploading datasets to HuggingFace Hub.
 """
 
-from .utils import (
+from .loading import (
     load_corpus_dataset,
     load_qa_dataset,
-    build_corpus_features,
-    build_qa_features,
-    push_dataset_to_hub,
 )
+from .processing import (
+    CorpusIndex,
+    project_fields,
+    filter_dataset,
+)
+from .hf import push_dataset_to_hub
 
 
 __all__ = [
     "load_corpus_dataset",
     "load_qa_dataset",
-    "build_corpus_features",
-    "build_qa_features",
+    "CorpusIndex",
+    "project_fields",
+    "filter_dataset",
     "push_dataset_to_hub",
 ]
