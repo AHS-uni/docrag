@@ -89,3 +89,24 @@ class MMLongBenchDocRaw(BaseRawEntry):
         "populate_by_name": True,
         "frozen": True,
     }
+### SlideVQA ###
+
+
+class SlideVQARaw(BaseRawEntry):
+    """
+    Schema for a SlideVQA dataset example, which requires reasoning across multiple slide images.
+    """
+    
+    question_id: str
+    question: str
+    doc_id: str
+    answer: str | float | int | list
+    evidence_slide_indices: list[int]  
+    arithmetic_expression: str | None = None  
+    reasoning_type: str | None = None  
+    data_split: str
+
+    model_config = {
+        "populate_by_name": True,
+        "frozen": True,
+    }
