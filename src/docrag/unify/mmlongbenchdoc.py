@@ -8,6 +8,8 @@ from docrag.unify.base import BaseUnifier
 from docrag.schema import UnifiedEntry, Question, Document, Evidence, Answer
 from docrag.schema.utils import tag_missing, tag_inferred
 
+__all__ = ["MMLongBenchDocUnifier"]
+
 
 class MMLongBenchDocUnifier(BaseUnifier[MMLongBenchDocRaw]):
     """

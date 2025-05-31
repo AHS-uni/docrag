@@ -1,8 +1,6 @@
 from pathlib import Path
 import json
 
-from pydantic import ValidationError
-
 from docrag.schema.raw_entry import MPDocVQARaw
 from docrag.unify.base import BaseUnifier
 from docrag.schema import (
@@ -14,6 +12,8 @@ from docrag.schema import (
     AnswerType,
 )
 from docrag.schema.utils import tag_missing
+
+__all__ = ["MPDocVQAUnifier"]
 
 
 class MPDocVQAUnifier(BaseUnifier[MPDocVQARaw]):

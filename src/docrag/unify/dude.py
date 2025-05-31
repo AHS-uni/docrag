@@ -16,6 +16,8 @@ from docrag.schema import (
 )
 from docrag.schema.utils import tag_missing, tag_low_quality, tag_inferred
 
+__all__ = ["DUDEUnifier"]
+
 
 class DUDEUnifier(BaseUnifier[DUDERaw]):
     """
