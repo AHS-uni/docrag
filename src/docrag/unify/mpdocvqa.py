@@ -1,17 +1,17 @@
-from pathlib import Path
 import json
+from pathlib import Path
 
-from docrag.schema.raw_entry import MPDocVQARaw
-from docrag.unify.base import BaseUnifier
 from docrag.schema import (
-    UnifiedEntry,
-    Question,
-    Document,
-    Evidence,
     Answer,
     AnswerType,
+    Document,
+    Evidence,
+    Question,
+    UnifiedEntry,
 )
+from docrag.schema.raw_entry import MPDocVQARaw
 from docrag.schema.utils import tag_missing
+from docrag.unify.base import BaseUnifier
 
 __all__ = ["MPDocVQAUnifier"]
 
