@@ -88,3 +88,23 @@ class MMLongBenchDocRaw(BaseRawEntry):
         "populate_by_name": True,
         "frozen": True,
     }
+
+
+### ArxivQA ###
+
+class ArxivQARaw(BaseRawEntry):
+    """
+    Schema for a single ArxivQA example.
+    """
+
+    id: str
+    image: str
+    options: list[str]
+    question: str
+    label: str
+    rationale: str
+
+    model_config = {
+        "populate_by_name": True,
+        "frozen": True,
+    }
