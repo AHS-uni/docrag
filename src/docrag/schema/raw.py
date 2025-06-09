@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 
 
-class BaseRawEntry(BaseModel):
+class RawEntry(BaseModel):
     """
     Base schema for one raw QA example before unification.
     Subclasses define fields *only*.
@@ -13,7 +13,7 @@ class BaseRawEntry(BaseModel):
 ### MPDocVQA ###
 
 
-class MPDocVQARaw(BaseRawEntry):
+class MPDocVQARawEntry(RawEntry):
     """
     Schema for a single MP-DocVQA example.
     """
@@ -48,9 +48,9 @@ class AnswerBoundingBox(BaseModel):
     }
 
 
-class DUDERaw(BaseRawEntry):
+class DUDERawEntry(RawEntry):
     """
-    Schema for a single DUDE QA example.
+    Schema for a single DUDE example.
     """
 
     question_id: str = Field(alias="questionId")
@@ -71,40 +71,89 @@ class DUDERaw(BaseRawEntry):
 ### MMLongBenchDoc ###
 
 
-class MMLongBenchDocRaw(BaseRawEntry):
+class MMLongBenchDocRawEntry(RawEntry):
     """
     Schema for a single MMLongBench-Doc example.
     """
 
+    question_id: str
+    question: str
     doc_id: str
     doc_type: str
-    question: str
-    answer: str | float | int | list | None
-    evidence_pages: list[int]
-    evidence_sources: list[str]
+    answer: str
+    evidence_pages: str
+    evidence_sources: str
     answer_format: str
-    data_split: str
 
     model_config = {
         "populate_by_name": True,
         "frozen": True,
     }
+
+
+### ArxivQA ###
+
+class ArxivQARawEntry(RawEntry):
+    """
+    Schema for a single ArxivQA example.
+    """
+
+    id: str
+    image: str
+    options: list[str]
+    question: str
+    label: str
+    rationale: str
+
+    model_config = {
+        "populate_by_name": True,
+        "frozen": True,
+    }
+
+
+### TATDQA ###
+
+class TATDQARawEntry(RawEntry):
+    """
+    Schema for a single TATDQA example.
+    """
+
+    doc_uid: str
+    doc_page: int
+    doc_source: str
+    question_uid: str
+    order: int
+    question: str
+    answer: list[str] | str | int | float
+    derivation: str
+    answer_type: str
+    scale: str
+    req_comparison: bool
+    facts: list[str]
+    block_mapping: list[dict[str, list[int]]]
+
+    model_config = {
+        "populate_by_name": True,
+        "frozen": True,
+    }
+
 ### SlideVQA ###
 
+class SlideVQARawEntry(RawEntry):
+    """
+    Schema for a single SlideVQA example.
+    """
 
-class SlideVQARaw(BaseRawEntry):
-    """
-    Schema for a SlideVQA dataset example, which requires reasoning across multiple slide images.
-    """
-    
-    question_id: str
+    qa_id: int
     question: str
-    doc_id: str
-    answer: str | float | int | list
-    evidence_slide_indices: list[int]  
-    arithmetic_expression: str | None = None  
-    reasoning_type: str | None = None  
-    data_split: str
+    answer: str
+    arithmetic_expression: str | None = None
+    evidence_pages: list[int]
+    deck_name: str
+    deck_url: str
+    image_urls: list[str]
+    answer_type: str | None = None
+    resoning_type: str | None = Field(default=None, alias="reasoning_type")
 
     model_config = {
         "populate_by_name": True,

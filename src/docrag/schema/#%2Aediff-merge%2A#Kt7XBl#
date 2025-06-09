@@ -117,7 +117,11 @@ class EvidenceSource(str, Enum):
         CHART: Plot, graph, or quantitative visual.
         IMAGE: Non-chart visual (diagram, photo).
         LAYOUT: Page layout or structure.
+<<<<<<< HEAD
+        NONE: No identifiable evidence source.
+=======
         NONE: Reserved for non-answerable questions.
+>>>>>>> module/unify
         OTHER: Any other source type.
     """
 

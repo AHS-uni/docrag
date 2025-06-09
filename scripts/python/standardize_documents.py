@@ -11,7 +11,6 @@ Supports both:
 
 Detects and logs:
   - duplicate pages per document (duplicates.txt)
-  - missing pages per document (missing.txt)
   - invalid filenames (invalid.txt)
 """
 
@@ -112,7 +111,6 @@ def main():
         docs[doc_id].append((raw_page, ext, path))
 
     duplicates = []
-    missing = []
 
     # Process each document
     for doc_id, entries in docs.items():
@@ -133,22 +131,10 @@ def main():
                 f_dup.write(line)
                 duplicates.append((doc_id, pg, paths))
 
-        # Detect missing pages (skip for single-page)
-        all_pages = sorted(page_map.keys())
-        if not args.single and all_pages:
-            expected = set(range(min(all_pages), max(all_pages) + 1))
-            missing_pages = sorted(expected - set(all_pages))
-            if missing_pages:
-                with open("missing.txt", "a") as f_miss:
-                    f_miss.write(f"{doc_id},{missing_pages}\n")
-                    missing.append((doc_id, missing_pages))
-
-        # Move valid pages
+        # Move valid pages (excluding duplicates)
         target_dir = output_root / doc_id
         target_dir.mkdir(exist_ok=True)
         skip_pages = set(dup_entries.keys())
-        if not args.single:
-            skip_pages |= set(missing_pages) if all_pages else set()
         for pg, ext, path in normalized:
             if pg in skip_pages:
                 continue
@@ -159,7 +145,6 @@ def main():
     print(f"Documents processed: {len(docs)}")
     print(f"Invalid files:       {len(invalid_files)} (invalid.txt)")
     print(f"Duplicates found:    {len(duplicates)} (duplicates.txt)")
-    print(f"Missing pages:       {len(missing)} (missing.txt)")
 
 
 if __name__ == "__main__":
