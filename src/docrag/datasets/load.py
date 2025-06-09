@@ -1,24 +1,27 @@
+"""
+Helpers for loading unified DocRAG datasets as 🤗 `datasets.Dataset`
+objects in either standard or streaming mode.
+"""
+
 from pathlib import Path
 
 from datasets import (
-    load_dataset,
-    Dataset,
-    IterableDataset,
-    DatasetDict,
-    IterableDatasetDict,
-    Features,
-    Value,
-    Sequence,
     ClassLabel,
+    Dataset,
+    DatasetDict,
+    Features,
     Image,
+    Sequence,
+    Value,
+    load_dataset,
 )
 
 from docrag.schema import (
+    AnswerFormat,
     AnswerType,
-    QuestionType,
     DocumentType,
     EvidenceSource,
-    AnswerFormat,
+    QuestionType,
     TagName,
 )
 
@@ -34,7 +37,7 @@ def _build_corpus_features() -> Features:
     """
     return Features(
         {
-            "doc_id": Value("string"),
+            "document_id": Value("string"),
             "page_number": Value("int32"),
             "image_path": Value("string"),
         }
@@ -72,7 +75,7 @@ def _build_qa_features() -> Features:
             "document": {
                 "id": Value("string"),
                 "type": ClassLabel(names=d_types),
-                "num_pages": Value("int32"),
+                "count_pages": Value("int32"),
                 "tags": [tag_features],
             },
             "evidence": {
@@ -92,50 +95,48 @@ def _build_qa_features() -> Features:
     )
 
 
+_CORPUS_FEATURES: Features = _build_corpus_features()
+_QA_FEATURES: Features = _build_qa_features()
+
 def load_corpus_dataset(
     dataset_root: str | Path,
     corpus_file: str = "corpus.jsonl",
-    cast_image: bool = True,
-    streaming: bool = False,
     **kwargs,
-) -> Dataset | IterableDataset:
+) -> Dataset:
     """
     Load the page-level corpus as a Hugging Face Dataset.
 
     Args:
         dataset_root (str | Path): root folder containing corpus.jsonl and documents/
         corpus_file (str): name of the JSONL manifest (default "corpus.jsonl")
-        cast_image (bool): whether to cast 'image_path' → Image()
-        streaming (bool): if True, returns an IterableDataset
 
     Returns:
-        Dataset or IterableDataset with columns ['doc_id', 'page_number', 'image']
-        if cast_image is True, otherwise ['doc_id', 'page_number', 'image_path'].
+        Dataset with columns ['doc_id', 'page_number', 'image'].
     """
     root = Path(dataset_root)
-    features = _build_corpus_features()
+    corpus_path = root / corpus_file
+    if not corpus_path.exists():
+        raise FileNotFoundError(corpus_path)
+
     ds = load_dataset(
         "json",
-        data_files=str(root / corpus_file),
-        features=features,
+        data_files=str(corpus_path),
+        features=_CORPUS_FEATURES,
         split="train",
-        streaming=streaming,
         **kwargs,
     )
-    if cast_image:
-        ds = ds.rename_column("image_path", "image")
-        ds = ds.cast_column("image", Image())
+
+    ds = ds.rename_column("image_path", "image")
+    ds = ds.cast_column("image", Image())
 
     return ds
 
 
 def load_qa_dataset(
     dataset_root: str | Path,
-    splits: dict[str, str] | None = None,
-    include_images: bool = False,
-    streaming: bool = False,
+    splits: dict[str, str],
     **kwargs,
-) -> DatasetDict | IterableDatasetDict:
+) -> DatasetDict:
     """
     Load QA splits into a DatasetDict (or IterableDatasetDict),
     with optional 'evidence_images'.
@@ -143,65 +144,18 @@ def load_qa_dataset(
     Args:
         dataset_root: root folder containing unified_qas/ and documents/
         splits: dict mapping split names → unified_qas/*.jsonl
-        include_images: if True, adds and casts an 'evidence_images' column
-        streaming: if True, returns an IterableDatasetDict
 
     Returns:
-        DatasetDict or IterableDatasetDict with keys train/val/test.
+        DatasetDict with keys specified in `splits`.
     """
     root = Path(dataset_root)
-    default = {
-        "train": "unified_qas/train.jsonl",
-        "val": "unified_qas/val.jsonl",
-        "test": "unified_qas/test.jsonl",
-    }
-    splits = splits or default
-    features = _build_qa_features()
+    splits = splits
 
     ds = load_dataset(
         "json",
         data_files={k: str(root / v) for k, v in splits.items()},
-        features=features,
-        streaming=streaming,
+        features=_QA_FEATURES,
         **kwargs,
     )
 
-    if include_images:
-
-        def _add_images(example):
-            base = root / "documents" / example["document"]["id"]
-            example["evidence_images"] = [
-                str(base / f"{p:03d}.jpg") for p in example["evidence"]["pages"]
-            ]
-            return example
-
-        ds = ds.map(_add_images)
-        ds = ds.cast_column("evidence_images", Image())
-
     return ds
-
-
-# def load_dataset_dict(
-#     dataset_root: Union[str, Path],
-#     corpus_file: str = "corpus.jsonl",
-#     qa_splits: Optional[Dict[str, str]] = None,
-#     include_images: bool = False,
-#     streaming: bool = False,
-# ) -> DatasetDict:
-#     """
-#     Load both corpus and QA datasets into one DatasetDict:
-
-#         {
-#           "corpus": Dataset,
-#           "qa":     DatasetDict(...)
-#         }
-
-#     Args:
-#         dataset_root:   root folder path
-#         corpus_file:    name of the corpus manifest JSONL
-#         qa_splits:      override default QA splits if desired
-#         include_images: whether to include 'evidence_images'
-#     """
-#     corpus = load_corpus_dataset(dataset_root, corpus_file)
-#     qa = load_qa_dataset(dataset_root, qa_splits, include_images)
-#     return DatasetDict({"corpus": corpus, "qa": qa})
