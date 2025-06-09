@@ -10,10 +10,8 @@ from .enums import (
     AnswerType,
     TagName,
 )
-from .unified_entry import UnifiedEntry, Question, Document, Evidence, Answer, Tag
-from .raw_entry import BaseRawEntry
-from .corpus import CorpusPage
-from .dataset import DatasetMetadata, DatasetSplit
+from .unified import UnifiedEntry, Question, Document, Evidence, Answer, Tag
+from .corpus import CorpusEntry
 
 __all__ = [
     # enums
@@ -30,8 +28,5 @@ __all__ = [
     "Evidence",
     "Answer",
     "Tag",
-    "CorpusPage",
-    "DatasetMetadata",
-    "DatasetSplit",
-    "BaseRawEntry",
+    "CorpusEntry",
 ]

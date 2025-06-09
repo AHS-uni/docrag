@@ -78,6 +78,7 @@ class AnswerFormat(str, Enum):
         FLOAT: Real-valued numeric result.
         BOOLEAN: True/False or Yes/No.
         LIST: Ordered or unordered list of items.
+        DATETIME: Time or date
         OTHER: Any other format not listed above.
         NONE: Reserved for non-answerable questions.
     """
@@ -88,6 +89,7 @@ class AnswerFormat(str, Enum):
     FLOAT = "float"
     BOOLEAN = "boolean"
     LIST = "list"
+    DATETIME = "datetime"
     OTHER = "other"
     NONE = "none"
 

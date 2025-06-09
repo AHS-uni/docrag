@@ -1,8 +1,13 @@
-from docrag.schema import Tag
-from docrag.schema.enums import TagName
+from docrag.schema import Tag, TagName
+
+__all__ = [
+    "tag_missing",
+    "tag_low_quality",
+    "tag_inferred",
+    "tag_predicted",
+]
 
 ### Tagging Functions ###
-
 
 def tag_missing(target: str, comment: str = "") -> Tag:
     """

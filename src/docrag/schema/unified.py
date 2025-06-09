@@ -2,8 +2,6 @@
 Pydantic models for a single VQA example in the unified dataset.
 """
 
-from __future__ import annotations
-
 from pydantic import BaseModel, Field, model_validator
 
 from .enums import (
@@ -57,13 +55,13 @@ class Document(BaseModel):
     Attributes:
         id (str): Unique identifier for the document.
         type (DocumentType): Primary document category (defaults to "other").
-        num_pages (int): Number of pages in the document.
+        count_pages (int): Number of pages in the document.
         tags (list[Tag]): List of tags for a field.
     """
 
     id: str
     type: DocumentType = DocumentType.OTHER
-    num_pages: int
+    count_pages: int
     tags: list[Tag] = Field(default_factory=list)
 
 
