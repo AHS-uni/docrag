@@ -1,132 +1,183 @@
-from pathlib import Path
 import json
+from pathlib import Path
 
-from docrag.schema.enums import EvidenceSource
-from docrag.schema.raw_entry import DUDERaw
-from docrag.unify.base import BaseUnifier
 from docrag.schema import (
-    UnifiedEntry,
-    Question,
-    Document,
-    Evidence,
     Answer,
-    QuestionType,
     AnswerFormat,
     AnswerType,
+    Document,
+    Evidence,
+    EvidenceSource,
+    Question,
+    QuestionType,
+    UnifiedEntry,
 )
-from docrag.schema.utils import tag_missing, tag_low_quality, tag_inferred
+from docrag.schema.raw import DUDERawEntry
+from docrag.schema.utils import tag_inferred, tag_low_quality, tag_missing
+
+from .unifier import Unifier, register_unifier
+from .exceptions import UnificationError
 
 __all__ = ["DUDEUnifier"]
 
 
-class DUDEUnifier(BaseUnifier[DUDERaw]):
+@register_unifier("dude")
+class DUDEUnifier(Unifier[DUDERawEntry]):
     """
     Unifier for the DUDE competition dataset.
     """
 
     def _discover_raw_qas(self) -> list[Path]:
         # All of the DUDE files are plain JSON under raw_qas/
-        return sorted(self.raw_qas_dir.glob("*.json"))
+        return sorted(self.raw_qas_directory.glob("*.json"))
 
-    def _load_raw_qas(self, path: Path) -> list[DUDERaw]:
+    def _load_raw_qas(self, path: Path) -> list[DUDERawEntry]:
         # Entries are in a top level 'data' array
         payload = json.loads(path.read_text(encoding="utf-8"))
-        return [DUDERaw.model_validate(item) for item in payload["data"]]
+        return [DUDERawEntry.model_validate(item) for item in payload["data"]]
 
-    def _convert_qa_entry(self, raw):
-        question = self._build_question(raw)
-        document = self._build_document(raw)
-        evidence = self._build_evidence(raw)
-        answer = self._build_answer(raw)
-
+    def _build_entry(
+        self,
+        raw: DUDERawEntry,
+        document: Document,
+        question: Question,
+        evidence: Evidence,
+        answer: Answer,
+    ) -> UnifiedEntry:
         entry = UnifiedEntry(
-            id=f"{raw.question_id}",
-            question=question,
+            id=f"{raw.doc_id}-{raw.question_id}",
             document=document,
+            question=question,
             evidence=evidence,
             answer=answer,
         )
 
-        if raw.data_split == "test":
-            entry.tags.append(tag_missing("evidence"))
-            entry.tags.append(tag_missing("answer"))
+        if raw.data_split.strip().lower() == "test":
+            entry.tags.append(
+                tag_missing(
+                    "evidence",
+                    "DUDE is a competition dataset. No evidence provided in test split.",
+                )
+            )
+            entry.tags.append(
+                tag_missing(
+                    "answer",
+                    "DUDE is a competition dataset. No answer provided in test split.",
+                )
+            )
 
         return entry
 
-    def _build_question(self, raw):
-        """
-        Construct the Question model.
-        """
-        q = Question(id=raw.question_id, text=raw.question)
-        if raw.data_split != "test":
-            q.type = self._map_question_type(raw.answer_type.lower())
-            q.tags.append(tag_low_quality("type"))
-        else:
-            q.tags.append(tag_missing("type"))
-        return q
-
     def _build_document(self, raw):
-        """
-        Construct the Document model.
-        """
-        num_pages = sum(1 for d, _, _ in self._corpus_records if d == raw.doc_id)
-        doc = Document(id=raw.doc_id, num_pages=num_pages)
-        doc.tags.append(tag_missing("type"))
-        return doc
+        count_pages = len(self._corpus_documents.get(raw.doc_id, []))
+
+        if count_pages == 0:
+            if self.test_mode:
+                self.logger.warning(
+                    "Document not found in corpus: doc_id=%s", raw.doc_id
+                )
+                self._problematic["documents"].append({
+                    "document_id": raw.doc_id,
+                    "reason": "Document missing in corpus records.",
+                })
+                return None
+            else:
+                raise UnificationError(
+                    f"Document '{raw.doc_id}' not found in corpus."
+                    f"for question_id={raw.question_id}."
+                )
+
+        document = Document(id=raw.doc_id, count_pages=count_pages)
+        document.tags.append(tag_missing("type", "DUDE does not provide document types."))
+        return document
+
+    def _build_question(self, raw):
+        question = Question(id=raw.question_id, text=raw.question)
+        if raw.data_split == "test":
+            question.tags.append(tag_missing(
+                "type",
+                "Question type is not available in the test split. DUDE considers question type to be a part of the answer.",
+            ))
+            return question
+
+        assert raw.answer_type, "Expected non-empty answer type for non-test questions"
+
+        question.type = self._map_question_type(raw.answer_type.strip().lower())
+        question.tags.append(tag_low_quality(
+            "type",
+            "Question type classification in DUDE is limited. Only provides four broad categories.",
+        ))
+
+        return question
 
     def _build_evidence(self, raw):
-        """
-        Construct the Evidence model.
-        """
-        ev = Evidence()
-        if raw.data_split == "test":
-            return ev
-        elif raw.data_split != "test" and raw.answer_type == "not-answerable":
-            ev.sources = [EvidenceSource.NONE]
-        elif (
-            raw.data_split != "test"
-            and raw.answer_type != "not-answerable"
-            and raw.answers_page_bounding_boxes
-        ):
-            pages = {b.page for grp in raw.answers_page_bounding_boxes for b in grp}
-            ev.pages = sorted(pages)
-            ev.tags.append(tag_missing("sources"))
-        else:
-            ev.pages = [p for d, p, _ in self._corpus_records if d == raw.doc_id]
-            if ev.pages:
-                ev.tags.append(tag_missing("pages"))
-                ev.tags.append(
-                    tag_inferred("pages", "Set evidence pages to all pages.")
+        evidence = Evidence()
+
+        if raw.data_split.strip().lower() == "test":
+            return evidence
+
+        assert raw.answer_type, "Expected non-empty answer type for non-test questions"
+
+        if raw.answer_type.strip().lower() == "not-answerable":
+            evidence.sources = [EvidenceSource.NONE]
+            return evidence
+
+        document_pages = self._corpus_documents.get(raw.doc_id, [])
+        if not raw.answers_page_bounding_boxes:
+            evidence.pages = document_pages
+            evidence.tags.append(tag_inferred(
+                "pages",
+                "No evidence pages provided for this question. Using all document pages."
+            ))
+            evidence.tags.append(tag_missing("sources", "DUDE does not provide evidence sources."))
+            return evidence
+
+        pages = {b.page for grp in raw.answers_page_bounding_boxes for b in grp}
+        missing = [p for p in pages if p not in document_pages]
+        if missing:
+            if self.test_mode:
+                valid_pages = sorted(p for p in pages if p in document_pages)
+                evidence.pages = valid_pages or [0]
+                self.logger.warning(
+                    "Extracted pages %s not in corpus for doc_id=%s. Using %s instead.",
+                    missing, raw.doc_id, evidence.pages
                 )
+                self._problematic["questions"].append({
+                    "question_id": raw.question_id,
+                    "reason": f"Extracted pages {missing} not found in corpus.",
+                })
             else:
-                ev.pages = [0]
-                ev.tags.append(
-                    tag_missing("pages", "Could not find document pages in corpus.")
+                raise UnificationError(
+                    f"Pages {missing} extracted from bounding boxes do not exist in corpus for "
+                    f"doc_id={raw.doc_id}, question_id={raw.question_id}."
                 )
-        return ev
+
+        evidence.pages = sorted(pages)
+        evidence.tags.append(tag_missing("sources", "DUDE does not provide evidence sources."))
+        return evidence
 
     def _build_answer(self, raw):
-        """
-        Construct the Answer Model
-        """
-        if raw.data_split == "test":
+        if raw.data_split.strip().lower() == "test":
             return Answer()
         if raw.answer_type == "not-answerable":
             return Answer(type=AnswerType.NOT_ANSWERABLE)
 
-        ans = Answer()
+        assert raw.answers, "Expected non-empty answers list for answerable non-test questions"
+
+        answer = Answer()
         if len(raw.answers) > 1:
-            ans.variants = [self._handle_list_answers(raw.answers)]
-            ans.format = AnswerFormat.LIST
-            ans.type = AnswerType.ANSWERABLE
+            answer.variants = [self._handle_list_answers(raw.answers)]
+            answer.format = AnswerFormat.LIST
         else:
             single = str(raw.answers[0])
-            ans.variants = [single] + (raw.answers_variants or [])
-            ans.tags.append(tag_missing("format"))
-            ans.type = AnswerType.ANSWERABLE
-        return ans
+            answer.variants = [single] + (raw.answers_variants or [])
 
-    def _map_question_type(self, answer_type_raw: str) -> QuestionType:
+        answer.type = AnswerType.ANSWERABLE
+        answer.tags.append(tag_missing("format", "DUDE does not provide answer formats."))
+        answer.tags.append(tag_missing("rationale", "DUDE does not provide rationale for answers."))
+        return answer
+
+    def _map_question_type(self, answer_type: str) -> QuestionType:
         """
         Map the raw answer_type string to our QuestionType enum.
         """
@@ -136,12 +187,12 @@ class DUDEUnifier(BaseUnifier[DUDERaw]):
             "abstractive": QuestionType.ABSTRACTIVE,
             "list/abstractive": QuestionType.ABSTRACTIVE,
         }
-        return mapping.get(answer_type_raw, QuestionType.OTHER)
+        return mapping.get(answer_type, QuestionType.OTHER)
 
     def _handle_list_answers(self, answers: list[str]) -> str:
         """
         Convert a list of answer items into a single string representation,
-        e.g. ["foo", "bar"] → "['foo', 'bar']". Numeric items are left unquoted.
+        e.g. ["foo", "bar"] → "['foo', 'bar']".
         """
-        repr_items = [f"'{item}'" if not item.isdigit() else item for item in answers]
-        return "[" + ", ".join(repr_items) + "]"
+        item_strings = [f"'{item}'" for item in answers]
+        return "[" + ", ".join(item_strings) + "]"

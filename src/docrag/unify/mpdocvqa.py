@@ -9,83 +9,159 @@ from docrag.schema import (
     Question,
     UnifiedEntry,
 )
-from docrag.schema.raw_entry import MPDocVQARaw
-from docrag.schema.utils import tag_missing
-from docrag.unify.base import BaseUnifier
+from docrag.schema.raw import MPDocVQARawEntry
+from docrag.schema.utils import tag_inferred, tag_missing
+
+from .unifier import Unifier, register_unifier
+from .exceptions import UnificationError
 
 __all__ = ["MPDocVQAUnifier"]
 
 
-class MPDocVQAUnifier(BaseUnifier[MPDocVQARaw]):
+@register_unifier("mpdocvqa")
+class MPDocVQAUnifier(Unifier[MPDocVQARawEntry]):
     """
     Unifier for the MP-DocVQA competition dataset.
     """
 
     def _discover_raw_qas(self) -> list[Path]:
         # All of the MPDocVQA files are plain JSON under raw_qas/
-        return sorted(self.raw_qas_dir.glob("*.json"))
+        return sorted(self.raw_qas_directory.glob("*.json"))
 
-    def _load_raw_qas(self, path: Path) -> list[MPDocVQARaw]:
+    def _load_raw_qas(self, path: Path) -> list[MPDocVQARawEntry]:
         # Entries are in a top level 'data' array
         payload = json.loads(path.read_text(encoding="utf-8"))
-        return [MPDocVQARaw.model_validate(item) for item in payload["data"]]
+        return [MPDocVQARawEntry.model_validate(item) for item in payload["data"]]
 
-    def _convert_qa_entry(self, raw: MPDocVQARaw) -> UnifiedEntry:
-        question = self._build_question(raw)
-        document = self._build_document(raw)
-        evidence = self._build_evidence(raw)
-        answer = self._build_answer(raw)
-
+    def _build_entry(
+        self,
+        raw: MPDocVQARawEntry,
+        document: Document,
+        question: Question,
+        evidence: Evidence,
+        answer: Answer,
+    ) -> UnifiedEntry:
         entry = UnifiedEntry(
             id=f"{raw.doc_id}-{raw.question_id}",
-            question=question,
             document=document,
+            question=question,
             evidence=evidence,
             answer=answer,
         )
 
-        if raw.data_split.lower() == "test":
-            entry.tags.append(tag_missing("evidence"))
-            entry.tags.append(tag_missing("answer"))
+        if raw.data_split.strip().lower() == "test":
+            entry.tags.append(tag_missing(
+                "evidence",
+                "MPDocVQA is a competition dataset. No evidence provided in test split."
+            ))
+            entry.tags.append(tag_missing(
+                "answer",
+                "MPDocVQA is a competition dataset. No answer provided in test split."
+            ))
 
         return entry
 
-    def _build_question(self, raw: MPDocVQARaw) -> Question:
-        q = Question(id=str(raw.question_id), text=raw.question)
-        q.tags.append(tag_missing("type"))
-        return q
+    def _build_document(self, raw: MPDocVQARawEntry) -> Document | None:
+        count_pages = len(self._corpus_documents.get(raw.doc_id, []))
 
-    def _build_document(self, raw: MPDocVQARaw) -> Document:
-        num_pages = sum(1 for d, _, _ in self._corpus_records if d == raw.doc_id)
-        doc = Document(id=raw.doc_id, num_pages=num_pages)
-        doc.tags.append(tag_missing("type"))
-        return doc
-
-    def _build_evidence(self, raw: MPDocVQARaw) -> Evidence:
-        ev = Evidence()
-        split = raw.data_split.lower()
-
-        if split != "test" and raw.answer_page_idx is not None:
-            try:
-                page_id_str = raw.page_ids[raw.answer_page_idx]
-                page_num = int(page_id_str.rsplit("_p", 1)[1])
-            except Exception:
-                ev.tags.append(tag_missing("pages"))
+        if count_pages == 0:
+            if self.test_mode:
+                self.logger.warning(
+                    "Document not found in corpus: doc_id=%s", raw.doc_id
+                )
+                self._problematic["documents"].append({
+                    "document_id": raw.doc_id,
+                    "reason": "Document missing in corpus records.",
+                })
+                return None
             else:
-                if (raw.doc_id, page_num) in self._corpus_index:
-                    ev.pages = [page_num]
-                else:
-                    ev.tags.append(tag_missing("pages"))
+                raise UnificationError(
+                    f"Document '{raw.doc_id}' not found in corpus."
+                    f"for question_id={raw.question_id}."
+                )
 
-        ev.tags.append(tag_missing("sources"))
-        return ev
+        document = Document(id=raw.doc_id, count_pages=count_pages)
+        document.tags.append(
+            tag_missing("type", "MPDocVQA does not provide document type.")
+        )
+        return document
 
-    def _build_answer(self, raw: MPDocVQARaw) -> Answer:
-        split = raw.data_split.lower()
+    def _build_question(self, raw: MPDocVQARawEntry) -> Question:
+        question = Question(id=str(raw.question_id), text=raw.question)
+        question.tags.append(tag_missing("type", "MPDocVQA does not provide question type."))
+        return question
 
-        if split == "test":
-            return Answer()
+    def _build_evidence(self, raw: MPDocVQARawEntry) -> Evidence:
+        evidence = Evidence()
 
-        ans = Answer(type=AnswerType.ANSWERABLE, variants=raw.answers or [])
-        ans.tags.append(tag_missing("format"))
-        return ans
+        if raw.data_split.strip().lower() == "test":
+            return evidence
+
+        if raw.answer_page_idx is None:
+            if self.test_mode:
+                evidence.pages = [0]
+                self.logger.warning("Missing answer_page_idx for doc_id=%s.", raw.doc_id)
+                self._problematic["questions"].append({
+                    "question_id": raw.question_id,
+                    "reason": "Missing answer_page_idx.",
+                })
+                return evidence
+            else:
+                raise UnificationError(
+                    f"answer_page_idx is None for doc_id={raw.doc_id}, question_id={raw.question_id}. "
+                    f"Expected to index into: {raw.page_ids}"
+                )
+
+        try:
+            page_id = raw.page_ids[raw.answer_page_idx]
+            page_number = int(page_id.rsplit("_p", 1)[1])
+        except Exception as e:
+            if self.test_mode:
+                evidence.pages = [0]
+                self.logger.warning("Error parsing answer_page_idx for doc_id=%s.", raw.doc_id)
+                self._problematic["questions"].append({
+                    "question_id": raw.question_id,
+                    "reason": "Invalid or unparseable answer_page_idx.",
+                })
+                return evidence
+            else:
+                raise UnificationError(
+                    f"Failed to parse page number from page_ids[{raw.answer_page_idx}] "
+                    f"for doc_id={raw.doc_id}, question_id={raw.question_id}: {raw.page_ids}"
+                ) from e
+
+        if (raw.doc_id, page_number) not in self._corpus_index:
+            if self.test_mode:
+                evidence.pages = [0]
+                self.logger.warning(
+                    "Extracted page %s not found in corpus for doc_id=%s.", page_number, raw.doc_id
+                )
+                self._problematic["questions"].append({
+                    "question_id": raw.question_id,
+                    "reason": f"Extracted page {page_number} not found in corpus.",
+                })
+                return evidence
+            else:
+                raise UnificationError(
+                    f"Page {page_number} extracted from answer_page_idx does not exist in corpus "
+                    f"for doc_id={raw.doc_id}, question_id={raw.question_id}."
+                )
+
+        evidence.pages = [page_number]
+        evidence.tags.append(tag_missing("sources", "MPDocVQA does not provide evidence sources."))
+        return evidence
+
+
+    def _build_answer(self, raw: MPDocVQARawEntry) -> Answer:
+        answer = Answer()
+        if raw.data_split.strip().lower() == "test":
+            return answer
+
+        assert raw.answers, "Expected non-empty answers list for non-test questions"
+
+        answer.variants = raw.answers
+        answer.type = AnswerType.ANSWERABLE
+        answer.tags.append(tag_inferred("type", "MPDocVQA only contains answerable questions."))
+        answer.tags.append(tag_missing("format", "MPDocVQA does not provide answer format."))
+        answer.tags.append(tag_missing("rationale", "MPDocVQA does not provide rationale for answers."))
+        return answer

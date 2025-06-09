@@ -1,134 +1,166 @@
-from pathlib import Path
 import json
-from typing import Optional, Tuple
+import re
+from pathlib import Path
 
-from docrag.schema.enums import (
-    QuestionType,
-    DocumentType,
-    EvidenceSource,
+from docrag.schema import (
+    Answer,
     AnswerType,
-    AnswerFormat,
+    Document,
+    DocumentType,
+    Evidence,
+    EvidenceSource,
+    Question,
+    UnifiedEntry,
 )
-from docrag.schema.raw_entry import ArxivQARaw
-from docrag.unify.base import BaseUnifier
-from docrag.schema import UnifiedEntry, Question, Document, Evidence, Answer
-from docrag.schema.utils import tag_missing, tag_inferred, tag_low_quality
+from docrag.schema.raw import ArxivQARawEntry
+from docrag.schema.utils import tag_inferred, tag_missing
+
+from .exceptions import UnificationError
+from .unifier import Unifier, register_unifier
+
+__all__ = ["ArxivQAUnifier"]
 
 
-class ArxivQAUnifier(BaseUnifier[ArxivQARaw]):
+@register_unifier("arxivqa")
+class ArxivQAUnifier(Unifier[ArxivQARawEntry]):
     """
     Unifier for the ArxivQA dataset.
     """
 
     def _discover_raw_qas(self) -> list[Path]:
         # All raw entries are in a single JSONL file under raw_qas_dir
-        return sorted(self.raw_qas_dir.glob("*.jsonl"))
+        return sorted(self.raw_qas_directory.glob("*.jsonl"))
 
-    def _load_raw_qas(self, path: Path) -> list[ArxivQARaw]:
+    def _load_raw_qas(self, path: Path) -> list[ArxivQARawEntry]:
         # Each line is a JSON object
-        raws: list[ArxivQARaw] = []
+        raws: list[ArxivQARawEntry] = []
         for line in path.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
-            raws.append(ArxivQARaw.model_validate(json.loads(line)))
+            raws.append(ArxivQARawEntry.model_validate(json.loads(line)))
         return raws
 
-    def _convert_qa_entry(self, raw: ArxivQARaw) -> UnifiedEntry:
-        question = self._build_question(raw)
-        document = self._build_document(raw)
-        evidence = self._build_evidence(raw)
-        answer = self._build_answer(raw)
-
+    def _build_entry(
+        self,
+        raw: ArxivQARawEntry,
+        document: Document,
+        question: Question,
+        evidence: Evidence,
+        answer: Answer,
+    ) -> UnifiedEntry:
         entry = UnifiedEntry(
             id=raw.id,
-            question=question,
             document=document,
+            question=question,
             evidence=evidence,
             answer=answer,
         )
 
         return entry
 
-    def _build_question(self, raw: ArxivQARaw) -> Question:
-        """
-        Construct the Question model.
-        """
-        q = Question(id=raw.id, text=raw.question)
-        q.type = QuestionType.OTHER
-        q.tags.append(tag_missing("type"))
-        return q
 
-    def _build_document(self, raw: ArxivQARaw) -> Document:
+    def _build_document(self, raw: ArxivQARawEntry) -> Document | None:
         """
         Construct the Document model.
         """
         paper_id, _ = self._extract_paper_page(raw.image)
-        num_pages = sum(1 for (d, _, _) in self._corpus_records if d == paper_id)
-        doc = Document(id=paper_id, num_pages=num_pages)
+        count_pages = len(self._corpus_documents.get(paper_id, []))
 
-        # Infer document type as scientific
-        doc.type = DocumentType.SCIENTIFIC
-        doc.tags.append(tag_inferred("type"))
+        if count_pages == 0:
+            if self.test_mode:
+                self.logger.warning(
+                    "Document not found in corpus: paper_id=%s", paper_id
+                )
+                self._problematic["documents"].append({
+                    "document_id": paper_id,
+                    "reason": "Document missing in corpus records.",
+                })
+                return None
+            else:
+                raise UnificationError(
+                    f"Document '{paper_id}' not found in corpus."
+                    f"for question_id={raw.id}."
+                )
 
-        if num_pages == 0:
-            doc.tags.append(tag_missing("num_pages"))
+        document = Document(id=paper_id, count_pages=count_pages)
 
-        return doc
+        document.type = DocumentType.SCIENTIFIC
+        document.tags.append(tag_inferred("type", "All ArxivQA figures are from scientific papers."))
 
-    def _build_evidence(self, raw: ArxivQARaw) -> Evidence:
-        """
-        Construct the Evidence model.
-        """
-        ev = Evidence()
-        paper_id, page_num = self._extract_paper_page(raw.image)
+        return document
 
-        if (paper_id, page_num) in self._corpus_index:
-            ev.pages = [page_num]
-        else:
-            ev.pages = [0]
-            ev.tags.append(tag_missing("pages"))
+    def _build_question(self, raw: ArxivQARawEntry) -> Question:
+        question = Question(id=raw.id, text=raw.question)
+        question.tags.append(tag_missing("type", "ArxivQA does not provide question type"))
+        return question
 
-        ev.sources = [EvidenceSource.IMAGE]
-        ev.tags.append(tag_inferred("sources"))
+    def _build_evidence(self, raw: ArxivQARawEntry) -> Evidence:
+        evidence = Evidence()
+        paper_id, page_number = self._extract_paper_page(raw.image)
 
-        return ev
+        if (paper_id, page_number) not in self._corpus_index:
+            if self.test_mode:
+                evidence.pages = [0]
+                self.logger.warning(
+                    "Extracted page %s from paper %s not found in corpus.", page_number, paper_id
+                )
+                self._problematic["questions"].append({
+                    "question_id": raw.id,
+                    "reason": f"Extracted page {page_number} of paper {paper_id} not in corpus.",
+                })
+            else:
+                raise UnificationError(
+                    f"Page {page_number} of paper {paper_id} does not exist in corpus "
+                    f"(raw.image={raw.image})."
+                )
 
-    def _build_answer(self, raw: ArxivQARaw) -> Answer:
-        """
-        Construct the Answer model.
-        """
-        ans = Answer()
+        evidence.pages = [page_number]
+        evidence.sources = [EvidenceSource.IMAGE]
+        evidence.tags.append(tag_inferred("sources", "All ArxivQA sources are figures."))
 
-        # Filter out any "## ..." entries from options
+        return evidence
+
+    def _build_answer(self, raw: ArxivQARawEntry) -> Answer:
+        answer = Answer()
+
         filtered_options = self._filter_options(raw.options)
+        normalized = self._normalize_label(raw.label)
+        chosen = self._select_variant_index(filtered_options, normalized)
 
-        # Normalize the label
-        lab = self._normalize_label(raw.label)
+        if chosen is None:
+            if self.test_mode:
+                self.logger.warning(
+                    "Count not index answer label %s in answer options %s (id=%s)",
+                    raw.label,
+                    raw.options,
+                    raw.id,
+                )
+                self._problematic["questions"].append({
+                    "question_id": raw.id,
+                    "reason": f"Could not index answer label {raw.label} in answer options {raw.options}.",
+                })
+                return answer
+            else:
+                raise UnificationError(
+                    f"Could not index answer label {raw.label} in answer options {raw.options} "
+                    f"(raw.label={raw.label})"
+                    f"(raw.options={raw.options})"
+                )
 
-        # Attempt to match label → index in filtered_options
-        chosen_idx = self._select_variant_index(filtered_options, lab)
+        answer.variants = [self._clean_option(filtered_options[chosen])]
 
-        # If no match, tag missing variants
-        if chosen_idx is None:
-            ans.variants = []
-            ans.tags.append(tag_missing("variants"))
-        else:
-            ans.variants = [filtered_options[chosen_idx]]
-
-        # Rationale
         if not raw.rationale or raw.rationale.strip() == "":
-            ans.rationale = ""
-            ans.tags.append(tag_missing("rationale"))
+            answer.rationale = ""
+            answer.tags.append(tag_missing("rationale", "Rationale not provided for this answer."))
         else:
-            ans.rationale = raw.rationale
+            answer.rationale = raw.rationale
 
-        ans.tags.append(tag_missing("format"))
+        answer.type = AnswerType.ANSWERABLE
+        answer.tags.append(tag_missing("format", "ArxivQA does not provide answer format."))
 
-        ans.type = AnswerType.ANSWERABLE
+        return answer
 
-        return ans
-
-    def _extract_paper_page(self, image_path: str) -> Tuple[str, int]:
+    def _extract_paper_page(self, image_path: str) -> tuple[str, int]:
         """
         Given raw.image like "images/2302.14794_1.jpg", return ("2302.14794", 1).
         If parsing fails, return ("", 0).
@@ -147,7 +179,7 @@ class ArxivQAUnifier(BaseUnifier[ArxivQARaw]):
         """
         return [opt for opt in (options or []) if not opt.strip().startswith("##")]
 
-    def _normalize_label(self, raw_label: Optional[str]) -> str:
+    def _normalize_label(self, raw_label: str | None) -> str:
         """
         Strip whitespace and surrounding brackets. E.g. "[A]" -> "A", "A) 0.05" -> "A) 0.05".
         """
@@ -158,7 +190,7 @@ class ArxivQAUnifier(BaseUnifier[ArxivQARaw]):
             lab = lab[1:-1].strip()
         return lab
 
-    def _select_variant_index(self, options: list[str], label: str) -> Optional[int]:
+    def _select_variant_index(self, options: list[str], label: str) -> int | None:
         """
         Given a list of filtered_options and a normalized label, attempt:
          1) prefix-match "X." or "X)" where X = first letter of label
@@ -187,3 +219,11 @@ class ArxivQAUnifier(BaseUnifier[ArxivQARaw]):
 
         # No match found
         return None
+
+    def _clean_option(self, text: str) -> str:
+        text = text.strip()
+        #   letter   optional space   "." or ")"   optional space   remainder
+        m = re.match(r"^[A-Za-z]\s*[.)]\s*(.*)", text)
+        if m:
+            return m.group(1).strip()
+        return text

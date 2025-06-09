@@ -1,120 +1,180 @@
-from pathlib import Path
-import json
 import ast
+import json
+from pathlib import Path
 
-from docrag.schema.enums import AnswerFormat, AnswerType, EvidenceSource, DocumentType
-from docrag.schema.raw_entry import MMLongBenchDocRaw
-from docrag.unify.base import BaseUnifier
-from docrag.schema import UnifiedEntry, Question, Document, Evidence, Answer
-from docrag.schema.utils import tag_missing, tag_inferred
+from docrag.schema import (
+    Answer,
+    AnswerFormat,
+    AnswerType,
+    Document,
+    DocumentType,
+    Evidence,
+    EvidenceSource,
+    Question,
+    UnifiedEntry,
+)
+from docrag.schema.raw import MMLongBenchDocRawEntry
+from docrag.schema.utils import tag_inferred, tag_missing
+
+from .unifier import Unifier, register_unifier
+from .exceptions import UnificationError
 
 __all__ = ["MMLongBenchDocUnifier"]
 
 
-class MMLongBenchDocUnifier(BaseUnifier[MMLongBenchDocRaw]):
+@register_unifier("mmlongbenchdoc")
+class MMLongBenchDocUnifier(Unifier[MMLongBenchDocRawEntry]):
     """
     Unifier for the MMLongBench-Doc dataset.
     """
 
     def _discover_raw_qas(self) -> list[Path]:
         # All JSON files under raw_qas/
-        return sorted(self.raw_qas_dir.glob("*.json"))
+        return sorted(self.raw_qas_directory.glob("*.json"))
 
-    def _load_raw_qas(self, path: Path) -> list[MMLongBenchDocRaw]:
+    def _load_raw_qas(self, path: Path) -> list[MMLongBenchDocRawEntry]:
         # Entries are in a top level array
         data = json.loads(path.read_text(encoding="utf-8"))
-        return [MMLongBenchDocRaw.model_validate(item) for item in data]
+        entries: list[MMLongBenchDocRawEntry] = []
+        for idx, item in enumerate(data):
+            item["question_id"] = str(idx)
+            entries.append(MMLongBenchDocRawEntry.model_validate(item))
+        return entries
 
-    def _convert_qa_entry(self, raw: MMLongBenchDocRaw) -> UnifiedEntry:
-        stemmed_doc_id = Path(raw.doc_id).stem
-        question = self._build_question(raw)
-        document = self._build_document(raw)
-        evidence = self._build_evidence(raw)
-        answer = self._build_answer(raw)
-
+    def _build_entry(
+        self,
+        raw: MMLongBenchDocRawEntry,
+        document: Document,
+        question: Question,
+        evidence: Evidence,
+        answer: Answer,
+    ) -> UnifiedEntry:
+        document_name = Path(raw.doc_id).stem
         entry = UnifiedEntry(
-            id=f"{stemmed_doc_id}_{question.id}",
-            question=question,
+            id=f"{document_name}-{raw.question_id}",
             document=document,
+            question=question,
             evidence=evidence,
             answer=answer,
         )
 
         return entry
 
-    def _build_question(self, raw: MMLongBenchDocRaw) -> Question:
-        """
-        Construct the Question model.
-        """
-        q_id = f"{abs(hash(raw.question)) % 10000}"
-        q = Question(id=q_id, text=raw.question)
-        q.tags.append(tag_missing("type"))
-        return q
+    def _build_document(self, raw: MMLongBenchDocRawEntry) -> Document | None:
+        count_pages = len(self._corpus_documents.get(Path(raw.doc_id).stem, []))
 
-    def _build_document(self, raw: MMLongBenchDocRaw) -> Document:
-        """
-        Construct the Document model.
-        """
-        num_pages = sum(
-            1 for d, _, _ in self._corpus_records if d == Path(raw.doc_id).stem
-        )
-        doc = Document(
+        if count_pages == 0:
+            if self.test_mode:
+                self.logger.warning(
+                    "Document not found in corpus: doc_id=%s", raw.doc_id
+                )
+                self._problematic["documents"].append({
+                    "document_id": raw.doc_id,
+                    "reason": "Document missing in corpus records.",
+                })
+                return None
+            else:
+                raise UnificationError(
+                    f"Document '{raw.doc_id}' not found in corpus. Cannot compute count_pages "
+                )
+
+        document = Document(
             id=Path(raw.doc_id).stem,
             type=self._map_document_type(raw.doc_type),
-            num_pages=num_pages,
+            count_pages=count_pages,
         )
-        return doc
+        return document
 
-    def _build_evidence(self, raw: MMLongBenchDocRaw) -> Evidence:
-        """
-        Construct the Evidence model.
-        """
-        ev = Evidence()
+    def _build_question(self, raw: MMLongBenchDocRawEntry) -> Question:
+        question = Question(id=str(raw.question_id), text=raw.question)
+        question.tags.append(tag_missing("type", "MMLongBenchDoc does not provide question types."))
+        return question
 
-        if str(raw.answer).strip().lower() == "not answerable":
-            ev.sources = [EvidenceSource.NONE]
-            return ev
+    def _build_evidence(self, raw: MMLongBenchDocRawEntry) -> Evidence:
+        evidence = Evidence()
 
-        parsed_1idx = self._parse_list_int(raw.evidence_pages)
-        if parsed_1idx:
-            ev.pages = [p - 1 for p in parsed_1idx]
+        if raw.answer.strip().lower() == "not answerable":
+            evidence.sources = [EvidenceSource.NONE]
+            return evidence
+
+        pages: list[int] = []
+        parsed = self._parse_list_int(raw.evidence_pages)
+        if parsed:
+            pages = [p - 1 for p in parsed]  # convert to 0-indexed
         else:
-            ev.tags.append(tag_missing("pages"))
+            evidence.tags.append(
+                tag_missing("pages", "Answer pages not provided for this question.")
+            )
 
-        mapped_sources = self._map_evidence_sources(raw.evidence_sources)
-        if mapped_sources and mapped_sources != [EvidenceSource.OTHER]:
-            ev.sources = mapped_sources
-        else:
-            ev.tags.append(tag_missing("sources"))
+        document_pages = self._corpus_documents.get(Path(raw.doc_id).stem, [])
 
-        if not ev.pages:
-            all_pages = [
-                p for d, p, _ in self._corpus_records if d == Path(raw.doc_id).stem
-            ]
-            if all_pages:
-                ev.pages = all_pages
-                ev.tags.append(tag_missing("pages"))
-                ev.tags.append(
+        if pages:
+            missing = [p for p in pages if p not in document_pages]
+
+            if missing:
+                if self.test_mode:
+                    valid = [p for p in pages if p in document_pages]
+                    evidence.pages = valid or [0]
+                    self.logger.warning(
+                        "Extracted pages %s not in corpus for doc_id=%s. Using %s instead.",
+                        missing, raw.doc_id, evidence.pages
+                    )
+                    self._problematic["questions"].append({
+                        "question_id": raw.question_id,
+                        "reason": f"Provided pages {pages} not found in corpus; used {evidence.pages}.",
+                    })
+                else:
+                    raise UnificationError(
+                        f"Provided pages {missing} do not exist in corpus for "
+                        f"doc_id={raw.doc_id}, question_id={raw.question_id}."
+                    )
+            else:
+                # All provided pages are valid
+                evidence.pages = pages
+
+        # 5) If no valid evidence.pages yet, fallback to all pages or [0]
+        if not evidence.pages:
+            if document_pages:
+                evidence.pages = document_pages
+                evidence.tags.append(
                     tag_inferred("pages", "Set evidence pages to all document pages.")
                 )
             else:
-                ev.pages = [0]
-                ev.tags.append(
-                    tag_missing("pages", "Could not find document pages in corpus.")
-                )
+                if self.test_mode:
+                    evidence.pages = [0]
+                    self.logger.warning(
+                        "No document pages found in corpus for doc_id=%s.", raw.doc_id
+                    )
+                    self._problematic.setdefault("questions", []).append({
+                        "question_id": raw.question_id,
+                        "reason": "Document pages missing in corpus.",
+                    })
+                else:
+                    raise UnificationError(
+                        f"Document '{raw.doc_id}' has no associated pages in the corpus "
+                        f"(question_id={raw.question_id})."
+                    )
 
-        return ev
+        # 6) Map and validate sources
+        mapped_sources = self._map_evidence_sources(raw.evidence_sources)
+        if mapped_sources and mapped_sources != [EvidenceSource.OTHER]:
+            evidence.sources = mapped_sources
+        else:
+            evidence.tags.append(
+                tag_missing("sources", "Evidence source not provided for this question.")
+            )
 
-    def _build_answer(self, raw: MMLongBenchDocRaw) -> Answer:
-        ans = Answer()
+        return evidence
 
-        if raw.answer is None or str(raw.answer).strip().lower() == "not answerable":
-            ans.format = AnswerFormat.NONE
-            ans.type = AnswerType.NOT_ANSWERABLE
-            return ans
+    def _build_answer(self, raw: MMLongBenchDocRawEntry) -> Answer:
+        answer = Answer()
+
+        if not raw.answer or raw.answer.strip().lower() == "not answerable":
+            answer.type = AnswerType.NOT_ANSWERABLE
+            return answer
 
         variant_str = str(raw.answer).strip() or ""
-        if ans.format == AnswerFormat.LIST:
+        if answer.format == AnswerFormat.LIST:
             try:
                 parsed = ast.literal_eval(variant_str)
                 if isinstance(parsed, list):
@@ -123,14 +183,15 @@ class MMLongBenchDocUnifier(BaseUnifier[MMLongBenchDocRaw]):
                 # leave as-is on parse failure
                 pass
 
-        ans.variants = [variant_str]
-        ans.format = self._map_answer_format(raw.answer_format)
-        ans.type = AnswerType.ANSWERABLE
+        answer.variants = [variant_str]
+        answer.format = self._map_answer_format(raw.answer_format)
+        answer.type = AnswerType.ANSWERABLE
+        answer.tags.append(tag_missing("rationale", "MMLongBenchDoc does not provide rationale for answers."))
 
-        return ans
+        return answer
 
-    def _map_evidence_sources(self, raw_sources: str) -> list[EvidenceSource]:
-        parsed = self._parse_list_string(raw_sources)
+    def _map_evidence_sources(self, sources: str) -> list[EvidenceSource]:
+        parsed = self._parse_list_string(sources)
         mapping = {
             "Pure-text (Plain-text)": EvidenceSource.SPAN,
             "Table": EvidenceSource.TABLE,
@@ -140,7 +201,7 @@ class MMLongBenchDocUnifier(BaseUnifier[MMLongBenchDocRaw]):
         }
         return [mapping.get(src, EvidenceSource.OTHER) for src in parsed]
 
-    def _map_answer_format(self, fmt: str) -> AnswerFormat:
+    def _map_answer_format(self, format: str) -> AnswerFormat:
         mapping = {
             "int": AnswerFormat.INTEGER,
             "str": AnswerFormat.STRING,
@@ -148,7 +209,7 @@ class MMLongBenchDocUnifier(BaseUnifier[MMLongBenchDocRaw]):
             "float": AnswerFormat.FLOAT,
             "list": AnswerFormat.LIST,
         }
-        return mapping.get(fmt.lower(), AnswerFormat.OTHER)
+        return mapping.get(format.lower(), AnswerFormat.OTHER)
 
     def _map_document_type(self, doc_type: str) -> DocumentType:
         mapping = {
