@@ -54,3 +54,5 @@ data/
 # Ignore build artifacts in "src" (if any)
 src/**/__pycache__/
 src/**/*.pyc
+
+docs/prompts/
