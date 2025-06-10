@@ -3,8 +3,8 @@
 Run a Unifier for a specified dataset, using the registry to locate the correct subclass.
 
 Usage examples:
-  python run_unifier.py -d tatdqa -r /path/to/tatdqa_dataset
-  python run_unifier.py --dataset mmlongbenchdoc --root-dir /data/mmld --test
+  python unify.py -d tatdqa -r /path/to/tatdqa_dataset
+  python unify.py --dataset mmlongbenchdoc --root-dir /data/mmld --test
 
 This script relies on each dataset’s unifier module registering itself via
 the `@register_unifier("<dataset>")` decorator. Once all modules are imported,
@@ -14,7 +14,7 @@ you can look up the appropriate Unifier subclass by name.
 import argparse
 from pathlib import Path
 
-from docrag.unify import get_unifier
+from docrag.unification import get_unifier
 
 
 def main():
