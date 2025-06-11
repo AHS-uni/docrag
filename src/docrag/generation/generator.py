@@ -1,0 +1,114 @@
+"""
+Defines the Generator facade, wrapping any registered VLM adapter
+for inference. Receives GeneratorSettings and exposes generate/batch_generate/to, etc.
+"""
+
+from pathlib import Path
+from typing import Any
+
+from PIL import Image
+
+from docrag.schema import GeneratorSettings
+from .adapter import Adapter
+from .registry import get_adapter
+
+
+class Generator:
+    """
+    High-level facade for multimodal text generation using Vision-Language models.
+
+    Attributes:
+        settings (GeneratorSettings): Validated settings for model, tokenizer, etc.
+    """
+
+    def __init__(self, settings: GeneratorSettings):
+        """
+        Initialize Generator.
+
+        Args:
+            settings (GeneratorSettings): Configuration for generator.
+        """
+        self.settings = settings
+        self._adapter: Adapter | None = None
+
+    def _init_adapter(self) -> None:
+        """
+        Lazily load and instantiate the appropriate adapter based on model name.
+        """
+        if self._adapter is None:
+            AdapterCls = get_adapter(self.settings.model.name)
+            self._adapter = AdapterCls(self.settings)
+
+    @property
+    def model(self) -> Any:
+        """
+        Access the underlying model instance.
+        """
+        self._init_adapter()
+        return self._adapter.model
+
+    @property
+    def processor(self) -> Any:
+        """
+        Access the underlying processor/tokenizer instance.
+        """
+        self._init_adapter()
+        return self._adapter.processor
+
+    def generate(
+        self,
+        images: list[Image.Image],
+        text: str = "",
+    ) -> str:
+        """
+        Generate a response on a single example from the model.
+
+        Args:
+            images (list[Image.Image]): Input images for inference.
+            text (str): Textual question or prompt to accompany images.
+
+        Returns:
+            str: Decoded model output.
+        """
+        self._init_adapter()
+        return self._adapter.generate(images=images, text=text)
+
+    # def batch_generate(self, batch: list[dict[str, Any]]) -> list[str]:
+    #     """
+    #     Batch-generate responses for multiple examples.
+
+    #     Args:
+    #         batch (list[dict[str, Any]]): List of dicts. Each dict should have:
+    #             - "images": list of PIL images
+    #             - "text":   prompt string
+
+    #     Returns:
+    #         list[str]: List of decoded outputs for each example.
+    #     """
+    #     return [
+    #         self.generate(
+    #             images=example.get("images", []),
+    #             text=example.get("text", "")
+    #         )
+    #         for example in batch
+    #     ]
+
+    def to(self, device: str) -> None:
+        """
+        Move the underlying model and processor to the specified device.
+
+        Args:
+            device (str): Target device (e.g., 'cpu', 'cuda:0').
+        """
+        self._init_adapter()
+        self._adapter.to(device)
+        self.settings.model.device = device
+
+    def export_config(self, path: Path | str) -> None:
+        """
+        Export the current settings to a JSON file.
+
+        Args:
+            path (str | Path): File path to write settings JSON.
+        """
+        Path(path).write_text(self.settings.model_dump_json(indent=2))
