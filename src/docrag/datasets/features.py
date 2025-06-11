@@ -5,7 +5,7 @@ from datasets import (
     Value,
 )
 
-from docrag.schema import (
+from docrag.schema.entries import (
     AnswerFormat,
     AnswerType,
     DocumentType,
