@@ -12,6 +12,7 @@ from .enums import (
 )
 from .unified import UnifiedEntry, Question, Document, Evidence, Answer, Tag
 from .corpus import CorpusEntry
+from .model_settings import GeneratorSettings
 
 __all__ = [
     # enums
@@ -29,4 +30,6 @@ __all__ = [
     "Answer",
     "Tag",
     "CorpusEntry",
+    # vlm settings
+    "GeneratorSettings"
 ]
