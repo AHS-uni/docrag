@@ -11,7 +11,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Generic, TypeVar
 
-from docrag.schema import (
+from docrag.schema.entries import (
     Answer,
     CorpusEntry,
     Document,
@@ -19,14 +19,15 @@ from docrag.schema import (
     Question,
     Tag,
     UnifiedEntry,
+    RawEntry,
 )
-from docrag.schema.dataset import DatasetMetadata, SplitMetadata
-from docrag.schema.raw import RawEntry
+from docrag.schema.metadata import DatasetMetadata, SplitMetadata
 from docrag.utils import get_logger
 
 from .exceptions import UnificationError
 
 __all__ = ["Unifier"]
+
 
 RawT = TypeVar("RawT", bound=RawEntry)
 

@@ -1,26 +1,33 @@
-__all__ = ["register_unifier", "get_unifier"]
+from typing import Type
+from .unifier import Unifier
 
-_UNIFIER_REGISTRY: dict[str, type] = {}
+__all__ = ["register", "get_unifier"]
 
-def register_unifier(name: str):
+_registry: dict[str, type] = {}
+
+
+def register(name: str):
     """
     Decorator to register a Unifier subclass under a given dataset name.
-    Usage:
-
-        @register_unifier("tatdqa")
-        class TATDQAUnifier(Unifier[TATDQARawEntry]):
-            ...
+    Matching is case-insensitive
     """
 
-    def decorator(cls):
-        _UNIFIER_REGISTRY[name] = cls
+    def decorator(cls: Type[Unifier]) -> Type[Unifier]:
+        _registry[name.lower()] = cls
         return cls
 
     return decorator
 
 
-def get_unifier(name: str) -> type | None:
+def get_unifier(name: str) -> Type[Unifier]:
     """
-    Return the Unifier subclass registered under `name`, or None if not found.
+    Lookup a Unifier by key.
+    Raises ValueError if no matching unifier is found.
     """
-    return _UNIFIER_REGISTRY.get(name)
+    key = name.lower()
+    if key in _registry:
+        return _registry[key]
+    available = ", ".join(_registry.keys())
+    raise ValueError(
+        f"No unifier registered for '{name}'. Available unifiers: {available}"
+    )

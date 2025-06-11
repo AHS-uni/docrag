@@ -1,102 +1,19 @@
-"""
-Helpers for loading unified DocRAG datasets as 🤗 `datasets.Dataset`
-objects in either standard or streaming mode.
-"""
-
 from pathlib import Path
 
 from datasets import (
-    ClassLabel,
     Dataset,
     DatasetDict,
-    Features,
     Image,
-    Sequence,
-    Value,
     load_dataset,
 )
 
-from docrag.schema import (
-    AnswerFormat,
-    AnswerType,
-    DocumentType,
-    EvidenceSource,
-    QuestionType,
-    TagName,
-)
+from .features import CORPUS_FEATURES, QA_FEATURES
 
 __all__ = [
     "load_corpus_dataset",
     "load_qa_dataset",
 ]
 
-
-def _build_corpus_features() -> Features:
-    """
-    Features spec for a page-level corpus (one JSONL line per page).
-    """
-    return Features(
-        {
-            "document_id": Value("string"),
-            "page_number": Value("int32"),
-            "image_path": Value("string"),
-        }
-    )
-
-
-def _build_qa_features() -> Features:
-    """
-    Features spec for QA entries matching unified schema.
-    """
-    q_types = [e.value for e in QuestionType]
-    d_types = [e.value for e in DocumentType]
-    e_sources = [e.value for e in EvidenceSource]
-    a_formats = [e.value for e in AnswerFormat]
-    a_types = [e.value for e in AnswerType]
-    tag_names = [e.value for e in TagName]
-
-    tag_features = Features(
-        {
-            "name": ClassLabel(names=tag_names),
-            "target": Value("string"),
-            "comment": Value("string"),
-        }
-    )
-
-    return Features(
-        {
-            "id": Value("string"),
-            "question": {
-                "id": Value("string"),
-                "text": Value("string"),
-                "type": ClassLabel(names=q_types),
-                "tags": [tag_features],
-            },
-            "document": {
-                "id": Value("string"),
-                "type": ClassLabel(names=d_types),
-                "count_pages": Value("int32"),
-                "tags": [tag_features],
-            },
-            "evidence": {
-                "pages": Sequence(Value("int32")),
-                "sources": Sequence(ClassLabel(names=e_sources)),
-                "tags": [tag_features],
-            },
-            "answer": {
-                "type": ClassLabel(names=a_types),
-                "variants": Sequence(Value("string")),
-                "rationale": Value("string"),
-                "format": ClassLabel(names=a_formats),
-                "tags": [tag_features],
-            },
-            "tags": [tag_features],
-        }
-    )
-
-
-_CORPUS_FEATURES: Features = _build_corpus_features()
-_QA_FEATURES: Features = _build_qa_features()
 
 def load_corpus_dataset(
     dataset_root: str | Path,
@@ -121,7 +38,7 @@ def load_corpus_dataset(
     ds = load_dataset(
         "json",
         data_files=str(corpus_path),
-        features=_CORPUS_FEATURES,
+        features=CORPUS_FEATURES,
         split="train",
         **kwargs,
     )
@@ -154,7 +71,7 @@ def load_qa_dataset(
     ds = load_dataset(
         "json",
         data_files={k: str(root / v) for k, v in splits.items()},
-        features=_QA_FEATURES,
+        features=QA_FEATURES,
         **kwargs,
     )
 

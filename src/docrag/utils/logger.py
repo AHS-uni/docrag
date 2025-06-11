@@ -6,7 +6,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from docrag.config import logging_settings
+from docrag.schema.settings import logging_settings
 
 
 def get_logger(

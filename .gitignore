@@ -56,3 +56,5 @@ src/**/__pycache__/
 src/**/*.pyc
 
 docs/prompts/
+
+scripts/legacy/

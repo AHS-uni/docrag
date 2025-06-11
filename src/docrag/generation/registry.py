@@ -1,6 +1,8 @@
 from typing import Type
 from .adapter import Adapter
 
+__all__ = ["register", "get_adapter"]
+
 _registry: dict[str, Type[Adapter]] = {}
 
 

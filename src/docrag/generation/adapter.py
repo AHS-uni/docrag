@@ -4,7 +4,7 @@ from typing import Any
 import torch
 from PIL import Image
 
-from docrag.schema import GeneratorSettings
+from docrag.schema.config import GeneratorConfig
 
 
 class Adapter(ABC):
@@ -12,12 +12,12 @@ class Adapter(ABC):
     Abstract base for all Vision–Language model adapters.
     """
 
-    def __init__(self, settings: GeneratorSettings):
+    def __init__(self, config: GeneratorConfig):
         """
         Args:
             settings: fully-validated Pydantic config for model, LoRA, image, tokenizer, generation.
         """
-        self.settings = settings
+        self.config = config
         self.model: torch.nn.Module
         self.processor: Any
         self._load()
@@ -34,7 +34,7 @@ class Adapter(ABC):
         Move model to a new device (e.g. 'cuda:1' or 'cpu').
         """
         self.model.to(torch.device(device))
-        self.settings.model.device = device
+        self.config.model.device = device
 
     @abstractmethod
     def generate(
@@ -59,7 +59,7 @@ class Adapter(ABC):
         If settings.prompt_template is set, apply it
         (e.g. Jinja2 or Python .format) to produce the final prompt.
         """
-        template = self.settings.prompt_template
+        template = self.config.prompt_template
         if template:
             try:
                 return template.format(text=text)

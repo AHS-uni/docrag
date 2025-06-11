@@ -4,8 +4,10 @@ from transformers import AutoModelForImageTextToText, AutoProcessor
 
 from ..adapter import Adapter
 from ..registry import register
-from ..utils import apply_tokenizer_config, apply_image_processor_config
 
+__all__ = [
+    "InternVLAdapter"
+]
 
 @register("internvl3")
 @register("internvl")
@@ -15,10 +17,7 @@ class InternVLAdapter(Adapter):
     """
 
     def _load(self) -> None:
-        model_config = self.settings.model
-        image_processor_config = self.settings.image_processor
-        tokenizer_config = self.settings.tokenizer
-
+        model_config = self.config.model
         self.model = AutoModelForImageTextToText.from_pretrained(
             model_config.path,
             torch_dtype=getattr(torch, model_config.dtype),
@@ -36,10 +35,15 @@ class InternVLAdapter(Adapter):
             use_fast=True,
         )
 
-        apply_image_processor_config(
-            self.processor.image_processor, image_processor_config
-        )
-        apply_tokenizer_config(self.processor.tokenizer, tokenizer_config)
+        image_processor_config = self.config.image_processor
+        image_processor_kwargs = image_processor_config.to_kwargs(exclude_defaults=True)
+        for k, v in image_processor_kwargs.items():
+            setattr(self.processor.image_processor, k, v)
+
+        tokenizer_config = self.config.tokenizer
+        tokenizer_kwargs = tokenizer_config.to_kwargs(exclude_defaults=True)
+        for k, v in tokenizer_kwargs.items():
+            setattr(self.processor.tokenizer, k, v)
 
     def generate(
         self,
@@ -48,7 +52,7 @@ class InternVLAdapter(Adapter):
     ) -> str:
         prompt = self._apply_prompt_template(text)
 
-        system_prompt = self.settings.system_prompt
+        system_prompt = self.config.system_prompt
         messages = [
             {"role": "system", "content": [{"type": "text", "text": system_prompt}]},
             {
@@ -66,10 +70,12 @@ class InternVLAdapter(Adapter):
             add_generation_prompt=True,
             return_tensors="pt",
             return_dict=True,
-        ).to(self.model.device, dtype=self.model.dtype)
+        )
+        inputs.to(self.model.device, dtype=self.model.dtype)
 
-        generation_config = self.settings.generate
-        outputs = self.model.generate(**inputs, **generation_config.to_diff_dict())
+        generation_config = self.config.generation
+        generation_kwargs = generation_config.to_kwargs(exclude_defaults=True)
+        outputs = self.model.generate(**inputs, **generation_kwargs)
 
         input_ids = inputs["input_ids"]
         generated_ids = outputs[0][input_ids.shape[-1] :]

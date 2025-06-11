@@ -8,7 +8,7 @@ from typing import Any
 
 from PIL import Image
 
-from docrag.schema import GeneratorSettings
+from docrag.schema.config import GeneratorConfig
 from .adapter import Adapter
 from .registry import get_adapter
 
@@ -18,42 +18,42 @@ class Generator:
     High-level facade for multimodal text generation using Vision-Language models.
 
     Attributes:
-        settings (GeneratorSettings): Validated settings for model, tokenizer, etc.
+        config (GeneratorConfig): Validated configuration for model, tokenizer, etc.
     """
 
-    def __init__(self, settings: GeneratorSettings):
+    def __init__(self, config: GeneratorConfig):
         """
         Initialize Generator.
 
         Args:
             settings (GeneratorSettings): Configuration for generator.
         """
-        self.settings = settings
-        self._adapter: Adapter | None = None
+        self.config = config
+        self.adapter: Adapter | None = None
 
-    def _init_adapter(self) -> None:
+    def init_adapter(self) -> None:
         """
         Lazily load and instantiate the appropriate adapter based on model name.
         """
-        if self._adapter is None:
-            AdapterCls = get_adapter(self.settings.model.name)
-            self._adapter = AdapterCls(self.settings)
+        if self.adapter is None:
+            AdapterCls = get_adapter(self.config.model.name)
+            self.adapter = AdapterCls(self.config)
 
     @property
     def model(self) -> Any:
         """
         Access the underlying model instance.
         """
-        self._init_adapter()
-        return self._adapter.model
+        self.init_adapter()
+        return self.adapter.model
 
     @property
     def processor(self) -> Any:
         """
         Access the underlying processor/tokenizer instance.
         """
-        self._init_adapter()
-        return self._adapter.processor
+        self.init_adapter()
+        return self.adapter.processor
 
     def generate(
         self,
@@ -70,8 +70,8 @@ class Generator:
         Returns:
             str: Decoded model output.
         """
-        self._init_adapter()
-        return self._adapter.generate(images=images, text=text)
+        self.init_adapter()
+        return self.adapter.generate(images=images, text=text)
 
     # def batch_generate(self, batch: list[dict[str, Any]]) -> list[str]:
     #     """
@@ -100,9 +100,9 @@ class Generator:
         Args:
             device (str): Target device (e.g., 'cpu', 'cuda:0').
         """
-        self._init_adapter()
-        self._adapter.to(device)
-        self.settings.model.device = device
+        self.init_adapter()
+        self.adapter.to(device)
+        self.config.model.device = device
 
     def export_config(self, path: Path | str) -> None:
         """
@@ -111,4 +111,4 @@ class Generator:
         Args:
             path (str | Path): File path to write settings JSON.
         """
-        Path(path).write_text(self.settings.model_dump_json(indent=2))
+        Path(path).write_text(self.config.model_dump_json(indent=2))
