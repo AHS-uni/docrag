@@ -87,6 +87,6 @@ class QwenAdapter(Adapter):
         input_ids = inputs["input_ids"]
         generated_ids = outputs[0][input_ids.shape[-1] :]
 
-        return self.processor.batch_decode(
+        return self.processor.decode(
             generated_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True
         )
