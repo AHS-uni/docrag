@@ -1,0 +1,326 @@
+[
+  {
+    "id": "3ff7928d6be3e8fc1683e157381bb206-47859793f529c06cdf2a64704eb34629",
+    "text": "Which years does the table provide information for the computation of basic and diluted net income per common share from continuing operations?",
+    "model_output": "2019, 2018, and 2017",
+    "ground_truth": [
+      "['2019', '2018', '2017']"
+    ],
+    "generation_time": 2.2067913003265858
+  },
+  {
+    "id": "3ff7928d6be3e8fc1683e157381bb206-73d8761488e9244bec0b92de0e1ac5cd",
+    "text": "What was the Net income from continuing operations in 2017?",
+    "model_output": "$ 170.6",
+    "ground_truth": [
+      "170.6"
+    ],
+    "generation_time": 0.7716660369187593
+  },
+  {
+    "id": "3ff7928d6be3e8fc1683e157381bb206-81b5eec3d64242265dec4fc44b0bbfca",
+    "text": "What was the Dilutive effect of stock options and RSUs in 2019?",
+    "model_output": "3.8",
+    "ground_truth": [
+      "3.8"
+    ],
+    "generation_time": 0.6352939149364829
+  },
+  {
+    "id": "3ff7928d6be3e8fc1683e157381bb206-01f509660d44aa28a96cd643c46ad017",
+    "text": "How many years did the Dilutive effect of stock options and RSUs exceed $4 million?",
+    "model_output": "1",
+    "ground_truth": [
+      "2"
+    ],
+    "generation_time": 0.5976387392729521
+  },
+  {
+    "id": "3ff7928d6be3e8fc1683e157381bb206-f4a8865af6dca19f03859f95edb0c045",
+    "text": "What was the change in Net income from continuing operations between 2017 and 2018?",
+    "model_output": "79",
+    "ground_truth": [
+      "84.8"
+    ],
+    "generation_time": 0.5863840142264962
+  },
+  {
+    "id": "3ff7928d6be3e8fc1683e157381bb206-dbba24e657aab5eab383b6f72145d74c",
+    "text": "What was the percentage change in the Basic net income per common share from continuing operations between 2018 and 2019?",
+    "model_output": "+43%",
+    "ground_truth": [
+      "37.27"
+    ],
+    "generation_time": 0.61936613637954
+  },
+  {
+    "id": "29d28fbc3dad9f88939b73fa005aad12-6616cc09b565f74174117cd09b79afee",
+    "text": "What is the change in gross unrecognized tax benefits during fiscal 2019?",
+    "model_output": "$68 million",
+    "ground_truth": [
+      "$68 million"
+    ],
+    "generation_time": 0.6440499257296324
+  },
+  {
+    "id": "29d28fbc3dad9f88939b73fa005aad12-2672fb7e58e9238b28ff6f486c5320d5",
+    "text": "What is the Balance at beginning of year for Year ended march 29, 2019? ",
+    "model_output": "$378",
+    "ground_truth": [
+      "$378"
+    ],
+    "generation_time": 0.6470771124586463
+  },
+  {
+    "id": "29d28fbc3dad9f88939b73fa005aad12-3bc9d78fee614a75140be2315046724a",
+    "text": "What is the Balance at end of year for year ended  March 29, 2019?",
+    "model_output": "446",
+    "ground_truth": [
+      "$446"
+    ],
+    "generation_time": 0.6309371665120125
+  },
+  {
+    "id": "29d28fbc3dad9f88939b73fa005aad12-408952cde77361468ee2051e2fe72045",
+    "text": "What is the percentage constitution of unrecognized tax benefits, if recognized that would favorably affect effective tax rate for year ended March 29, 2019?",
+    "model_output": "$361 million",
+    "ground_truth": [
+      "80.94"
+    ],
+    "generation_time": 0.7107219025492668
+  },
+  {
+    "id": "29d28fbc3dad9f88939b73fa005aad12-ea7c16c9e213bb6a471435331ab0a46c",
+    "text": "What is the total Balance at end of year for the fiscal years 2019, 2018, 2017?",
+    "model_output": "$446",
+    "ground_truth": [
+      "1072"
+    ],
+    "generation_time": 0.6347554158419371
+  },
+  {
+    "id": "29d28fbc3dad9f88939b73fa005aad12-4d1ac869e423230fd9670d72307ca681",
+    "text": "What is the average Balance at end of year for the fiscal years 2019, 2018, 2017?",
+    "model_output": "395",
+    "ground_truth": [
+      "357.33"
+    ],
+    "generation_time": 0.6203731913119555
+  },
+  {
+    "id": "01fa2a0c9793933e2eb6ac2b78bd6e58-231aaf878c6946696c5dfae770d99638",
+    "text": "What does the information in the table show?",
+    "model_output": "The table shows the average percentage year-on-year change in base salary, benefits and annual bonus for the Chief Executive Officer compared to the entire Group's employees.",
+    "ground_truth": [
+      "the actual expenditure of the Group for employee pay and distributions to shareholders compared to the retained earnings of the Group"
+    ],
+    "generation_time": 1.6021404946222901
+  },
+  {
+    "id": "01fa2a0c9793933e2eb6ac2b78bd6e58-878b8bab9df87664424fc209d456156a",
+    "text": "What is the retained earnings for 2019?",
+    "model_output": "920.0",
+    "ground_truth": [
+      "920.0"
+    ],
+    "generation_time": 0.6813461240381002
+  },
+  {
+    "id": "01fa2a0c9793933e2eb6ac2b78bd6e58-1b1c28d31b038dd9c4375ac583dba118",
+    "text": "For which years is the actual expenditure of the Group for employee pay and distributions to shareholders compared to the retained earnings of the Group in the table?",
+    "model_output": "2017, 2018, 2019",
+    "ground_truth": [
+      "['2019', '2018', '2017']"
+    ],
+    "generation_time": 1.0261759851127863
+  },
+  {
+    "id": "01fa2a0c9793933e2eb6ac2b78bd6e58-418aba601dc4fdff8f9b3518e374cb6d",
+    "text": "In which year were the staff costs the largest?",
+    "model_output": "2019",
+    "ground_truth": [
+      "2018"
+    ],
+    "generation_time": 0.6565936272963881
+  },
+  {
+    "id": "01fa2a0c9793933e2eb6ac2b78bd6e58-e3d54404a686525189218a7708bb33a8",
+    "text": "What was the change in retained earnings in 2019 from 2018?",
+    "model_output": "48 USDm",
+    "ground_truth": [
+      "168"
+    ],
+    "generation_time": 0.6598811540752649
+  },
+  {
+    "id": "01fa2a0c9793933e2eb6ac2b78bd6e58-514a09103c680fb8c028cad988694ed7",
+    "text": "What was the percentage change in retained earnings in 2019 from 2018?",
+    "model_output": "15.3%",
+    "ground_truth": [
+      "22.34"
+    ],
+    "generation_time": 0.7046535275876522
+  },
+  {
+    "id": "c668984ae39914d7f05275b5b112fd0d-be7c795484950794ea483574cbc2e50c",
+    "text": "What led to increase in Veradigm revenue during the year ended December 31, 2019?",
+    "model_output": "an increase in organic sales and cost reductions partially offset with headcount growth and hosting migration costs",
+    "ground_truth": [
+      "due to an increase in organic sales."
+    ],
+    "generation_time": 1.1648761173710227
+  },
+  {
+    "id": "c668984ae39914d7f05275b5b112fd0d-995dd64de14fcba2560522370e54efe6",
+    "text": "What led to increase in Gross profit and income from operations during the year ended December 31, 2019?",
+    "model_output": "an increase in organic sales and cost reductions partially offset with headcount growth and hosting migration costs",
+    "ground_truth": [
+      "due to an increase in organic sales and cost reductions partially offset with headcount growth and hosting migration costs."
+    ],
+    "generation_time": 1.1562769012525678
+  },
+  {
+    "id": "c668984ae39914d7f05275b5b112fd0d-feb4c455762a4ff8b120727bf4daee21",
+    "text": "What led to decrease in Gross margin and operating margin during the year ended December 31, 2019?",
+    "model_output": "an increase in hosting migration costs, costs associated with recent acquisitions, headcount growth and partially offset with other cost reductions",
+    "ground_truth": [
+      "(i) an increase in hosting migration costs, (ii) costs associated with recent acquisitions, (iii) headcount growth and (iv) partially offset with other cost reductions."
+    ],
+    "generation_time": 1.3224549125880003
+  },
+  {
+    "id": "c668984ae39914d7f05275b5b112fd0d-d24f6c11c0a908fdd10a4ee5d7a62f46",
+    "text": "What is the change in Revenue between 2019 and 2017?",
+    "model_output": "$61,243",
+    "ground_truth": [
+      "91337"
+    ],
+    "generation_time": 0.7107329275459051
+  },
+  {
+    "id": "c668984ae39914d7f05275b5b112fd0d-79efe6ec0727fdb4a7500ad1f8469d2d",
+    "text": "What is the change in Gross profit between 2019 nd 2017?",
+    "model_output": "$64,183",
+    "ground_truth": [
+      "61079"
+    ],
+    "generation_time": 0.7528922352939844
+  },
+  {
+    "id": "c668984ae39914d7f05275b5b112fd0d-9806c38d210b57e116a92adfab7b5683",
+    "text": "What is the change in Income from operations between 2019 and 2017?",
+    "model_output": "$ 10,835",
+    "ground_truth": [
+      "20180"
+    ],
+    "generation_time": 0.7891092570498586
+  },
+  {
+    "id": "f133f8fdf77b7bf44131afb03c309597-3778576af4114144521577cc9b96d085",
+    "text": "What is the usefulness of the carrying amount of money market funds?",
+    "model_output": "Approximates fair value",
+    "ground_truth": [
+      "approximates fair value as of each reporting date"
+    ],
+    "generation_time": 0.6163030890747905
+  },
+  {
+    "id": "f133f8fdf77b7bf44131afb03c309597-bab8dd55f4f1324778d188f692a7a50e",
+    "text": "What are the fair value of the company's respective non-financial assets and liabilities recognised or disclosed as of December 31, 2019?",
+    "model_output": "$0",
+    "ground_truth": [
+      "['0', '0']"
+    ],
+    "generation_time": 0.5765975033864379
+  },
+  {
+    "id": "f133f8fdf77b7bf44131afb03c309597-b73813f3542286c8c1ca15895f7964dc",
+    "text": "What are the company's Level 2 and 3 long term liabilities as at December 31, 2019?",
+    "model_output": "$ — $ 145",
+    "ground_truth": [
+      "['0', '$145']"
+    ],
+    "generation_time": 0.7289056228473783
+  },
+  {
+    "id": "f133f8fdf77b7bf44131afb03c309597-90e17081d40893769bca9f8a2af065ce",
+    "text": "What is the company's net assets measured at fair value as at December 31, 2019?",
+    "model_output": "$265,975",
+    "ground_truth": [
+      "257368"
+    ],
+    "generation_time": 0.7457551071420312
+  },
+  {
+    "id": "f133f8fdf77b7bf44131afb03c309597-ede63cdad095f16631dfc110a54c09e4",
+    "text": "What is the fair value of the company's total assets as at December 31, 2019?",
+    "model_output": "$256,915",
+    "ground_truth": [
+      "257513"
+    ],
+    "generation_time": 0.7882252195850015
+  },
+  {
+    "id": "f133f8fdf77b7bf44131afb03c309597-ecc10916271b0b1d3e670c0b176e000f",
+    "text": "What is the total fair value of the company's Level 3 net assets?",
+    "model_output": "145",
+    "ground_truth": [
+      "453"
+    ],
+    "generation_time": 0.590934980660677
+  },
+  {
+    "id": "33477a1fc38340fa607cbc2fd73fe290-bb4d0e68259f11393521752a8cac1429",
+    "text": "What was the expense incurred by Grocery & Snacks related to acquisitions and divestitures in the fiscal year 2018?",
+    "model_output": "$11.4 million",
+    "ground_truth": [
+      "$11.4 million"
+    ],
+    "generation_time": 0.7474065097048879
+  },
+  {
+    "id": "33477a1fc38340fa607cbc2fd73fe290-dc61b98a4528b9de515ee7bafaaf072d",
+    "text": "How much expense was incurred by Refrigerated & Frozen in the company’s restructuring plans in fiscal 2017 and 2018, respectively?",
+    "model_output": "$14.1 million, $23.6 million",
+    "ground_truth": [
+      "['$6.2 million', '$0.1 million']"
+    ],
+    "generation_time": 0.9806333547458053
+  },
+  {
+    "id": "33477a1fc38340fa607cbc2fd73fe290-47ff6ef1ee1bc1841dda15d7dfbc4566",
+    "text": "What was the operating profit in the Foodservice segment in 2017 and 2018, respectively?",
+    "model_output": "105.1, 121.8",
+    "ground_truth": [
+      "['105.1', '121.8']"
+    ],
+    "generation_time": 0.9175966959446669
+  },
+  {
+    "id": "33477a1fc38340fa607cbc2fd73fe290-352009b92d9a4a0584a79ad711f5ed5e",
+    "text": "What is the total operating profit of all segments in 2018?",
+    "model_output": "$1,685.7 million",
+    "ground_truth": [
+      "1412.5"
+    ],
+    "generation_time": 0.8491675453260541
+  },
+  {
+    "id": "33477a1fc38340fa607cbc2fd73fe290-689815794d91b3c60cde9e3dc0e53ee8",
+    "text": "What is the ratio of Grocery & Snacks’ operating profit to its expense in restructuring plans for the fiscal year 2018?",
+    "model_output": "6.39",
+    "ground_truth": [
+      "51.4"
+    ],
+    "generation_time": 0.6822467045858502
+  },
+  {
+    "id": "33477a1fc38340fa607cbc2fd73fe290-bbe4db94c864311a8eaff324e0bfc863",
+    "text": "What is the percentage change in total operating profit in 2018 compared to 2017?",
+    "model_output": "5%",
+    "ground_truth": [
+      "13.91"
+    ],
+    "generation_time": 0.5742959287017584
+  }
+]
