@@ -25,7 +25,7 @@ class CorpusIndex:
 
         Args:
             dataset (Dataset): A Hugging Face Dataset containing at least these columns:
-                - "doc_id" (str): Document identifier
+                - "document_id" (str): Document identifier
                 - "page_number" (int): Page number
                 - "image" (PIL.Image.Image): The image on that page
         """
@@ -42,7 +42,7 @@ class CorpusIndex:
         )
 
         for idx, example in enumerate(dataset):
-            doc_id = example["doc_id"]
+            doc_id = example["document_id"]
             page_number = example["page_number"]
             self.document_page_index[(doc_id, page_number)] = idx
             self.document_to_indices[doc_id].append(idx)

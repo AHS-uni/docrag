@@ -1,0 +1,22 @@
+# Development tools
+ruff
+pytest
+jupyterlab
+jupyter-resource-usage
+
+# Project dependencies
+numpy<2
+pydantic
+pydantic-settings
+huggingface-hub
+hf-xet
+datasets[vision]
+transformers
+faiss-cpu
+pdf2image
+qwen_vl_utils
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.6.0
+torchaudio==2.6.0
+torchvision==0.21.0

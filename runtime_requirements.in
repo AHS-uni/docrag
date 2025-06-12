@@ -1,0 +1,16 @@
+# Project dependencies
+numpy<2
+pydantic
+pydantic-settings
+huggingface-hub
+hf-xet
+datasets[vision]
+transformers
+faiss-gpu-cu12
+pdf2image
+qwen_vl_utils
+
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch==2.6.0
+torchaudio==2.6.0
+torchvision==0.21.0
