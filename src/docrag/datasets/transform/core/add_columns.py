@@ -3,7 +3,7 @@ from typing import Any
 from datasets import Dataset
 from PIL import Image
 
-from ..corpus_index import CorpusIndex
+from ...index import CorpusIndex
 from .utils import get_by_key, get_by_key_from_batch
 
 __all__ = [

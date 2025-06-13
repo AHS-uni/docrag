@@ -55,7 +55,7 @@ def load_qa_dataset(
     **kwargs,
 ) -> DatasetDict:
     """
-    Load QA splits into a DatasetDict (or IterableDatasetDict),
+    Load QA splits into a DatasetDict,
     with optional 'evidence_images'.
 
     Args:
