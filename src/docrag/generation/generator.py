@@ -93,7 +93,15 @@ class Generator:
         """
         self.load()
 
-        results = self.adapter.batch_generate(inputs)
+        self.load()
+
+        batch_size = self.config.batch_size or len(inputs)
+        results: list[tuple[str, float, int]] = []
+
+        for i in range(0, len(inputs), batch_size):
+            batch = inputs[i : i + batch_size]
+            raw = self.adapter.batch_generate(batch)
+            results.extend(raw)
 
         outputs: list[GeneratorOutput] = []
         for input, (text, elapsed, count_tokens) in zip(inputs, results):
@@ -106,7 +114,6 @@ class Generator:
                 )
             )
 
-        # 3) assemble the top‐level inference record
         return GeneratorInference(
             id=str(uuid.uuid4()),
             dataset_id=dataset_id,
