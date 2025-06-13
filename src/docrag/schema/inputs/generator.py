@@ -1,5 +1,5 @@
 from PIL import Image
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, ConfigDict
 
 class GeneratorInput(BaseModel):
     """
@@ -17,6 +17,8 @@ class GeneratorInput(BaseModel):
     id: str
     text: str
     images: list[Image.Image] = Field(default_factory=list)
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @model_validator(mode="after")
     def _ensure_non_empty(self):

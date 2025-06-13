@@ -1,5 +1,5 @@
 from PIL import Image
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, model_validator, ConfigDict
 
 
 class RetrieverInput(BaseModel):
@@ -18,6 +18,8 @@ class RetrieverInput(BaseModel):
     id: str
     text: str
     images: list[Image.Image]
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @model_validator(mode="after")
     def _ensure_non_empty(self):
