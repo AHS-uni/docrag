@@ -21,6 +21,8 @@ class GeneratorConfig(BaseModel):
         generation (GenerationConfig): Generation settings.
         system_prompt (str): System prompt for ChatML-style input.
         prompt_template (str | None): Optional prompt formatting template using `{text}`.
+        batch_size (int | None): Number of examples to process in each batch during generation.
+        If None, all inputs are processed in a single batch.
     """
 
     model: ModelConfig
@@ -32,4 +34,8 @@ class GeneratorConfig(BaseModel):
     )
     prompt_template: str | None = Field(
         None, description="Prompt template using `{text}` placeholder"
+    )
+    batch_size: int | None = Field(
+        None,
+        description="Batch size for generation (process all inputs if None)",
     )
