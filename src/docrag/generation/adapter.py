@@ -2,9 +2,9 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 import torch
-from PIL import Image
 
 from docrag.schema.config import GeneratorConfig
+from docrag.schema.inputs import GeneratorInput
 
 
 class Adapter(ABC):
@@ -20,10 +20,10 @@ class Adapter(ABC):
         self.config = config
         self.model: torch.nn.Module
         self.processor: Any
-        self._load()
+        self.load()
 
     @abstractmethod
-    def _load(self) -> None:
+    def load(self) -> None:
         """
         Load model & processor/tokenizer according to `self.settings.model`.
         """
@@ -37,22 +37,35 @@ class Adapter(ABC):
         self.config.model.device = device
 
     @abstractmethod
-    def generate(
-        self,
-        images: list[Image.Image],
-        text: str,
-    ) -> str:
+    def generate(self, input: GeneratorInput) -> tuple[str, float, int]:
         """
-        Run a single forward+decode pass.
+        Run inference on a single input using the underlying model.
 
         Args:
-            images (list[Image.Image]): List of PIL images to use as visual context.
-            text (str): Prompt/question string.
+            input (GeneratorInput): Structured input for generation,
+            including text, and images.
 
         Returns:
-            str: Decoded model output.
+            tuple[str, float, int]: A tuple of
+                - text (str): Decoded model output
+                - elapsed (float): Time taken for generation in seconds
+                - count_tokens (int): Number of generated tokens
         """
         ...
+
+    def batch_generate(
+        self, inputs: list[GeneratorInput]
+    ) -> list[tuple[str, float, int]]:
+        """
+        Run inference over a list (batch) of inputs.
+
+        Args:
+            inputs (list): List of GeneratorInput objects.
+        Returns:
+            list[tuple[str, float, int]]:
+                A list of tuples (text, elapsed_seconds, num_tokens).
+        """
+        return [self.generate(inp) for inp in inputs]
 
     def _apply_prompt_template(self, text: str) -> str:
         """

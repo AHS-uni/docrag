@@ -1,14 +1,11 @@
-"""
-Defines the Generator facade, wrapping any registered VLM adapter
-for inference. Receives GeneratorSettings and exposes generate/batch_generate/to, etc.
-"""
-
+import uuid
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
-
 from docrag.schema.config import GeneratorConfig
+from docrag.schema.inputs import GeneratorInput
+from docrag.schema.outputs import GeneratorOutput, GeneratorInference
+
 from .adapter import Adapter
 from .registry import get_adapter
 
@@ -31,7 +28,7 @@ class Generator:
         self.config = config
         self.adapter: Adapter | None = None
 
-    def init_adapter(self) -> None:
+    def load(self) -> None:
         """
         Lazily load and instantiate the appropriate adapter based on model name.
         """
@@ -44,7 +41,7 @@ class Generator:
         """
         Access the underlying model instance.
         """
-        self.init_adapter()
+        self.load()
         return self.adapter.model
 
     @property
@@ -52,46 +49,72 @@ class Generator:
         """
         Access the underlying processor/tokenizer instance.
         """
-        self.init_adapter()
+        self.load()
         return self.adapter.processor
 
-    def generate(
-        self,
-        images: list[Image.Image],
-        text: str = "",
-    ) -> str:
+    def generate(self, input: GeneratorInput) -> GeneratorOutput:
         """
-        Generate a response on a single example from the model.
+        Generate a response from the model on a single example.
 
         Args:
-            images (list[Image.Image]): Input images for inference.
-            text (str): Textual question or prompt to accompany images.
+            input (GeneratorInput): Structured input for generation.
 
         Returns:
-            str: Decoded model output.
+            GeneratorOutput: Structured result containing the decoded model output,
+            number of generated tokens and elapsed time.
         """
-        self.init_adapter()
-        return self.adapter.generate(images=images, text=text)
+        self.load()
+        text, elapsed, count_tokens = self.adapter.generate(input)
+        return GeneratorOutput(
+            id=input.id,
+            text=text,
+            elapsed=elapsed,
+            count_tokens=count_tokens,
+        )
 
-    # def batch_generate(self, batch: list[dict[str, Any]]) -> list[str]:
-    #     """
-    #     Batch-generate responses for multiple examples.
+    def generate_batch(
+        self,
+        inputs: list[GeneratorInput],
+        dataset_id: str,
+        split: str,
+        notes: str | None = None,
+    ) -> GeneratorInference:
+        """
+        Run a batch of inferences and return a full `GeneratorInference` record.
 
-    #     Args:
-    #         batch (list[dict[str, Any]]): List of dicts. Each dict should have:
-    #             - "images": list of PIL images
-    #             - "text":   prompt string
+        Args:
+            inputs: List of GeneratorInput to process.
+            dataset_id: Identifier of the dataset (e.g., 'slidevqa').
+            split: Which split these inputs came from ('train', 'val', 'test').
+            notes: Optional freeform notes about this run.
 
-    #     Returns:
-    #         list[str]: List of decoded outputs for each example.
-    #     """
-    #     return [
-    #         self.generate(
-    #             images=example.get("images", []),
-    #             text=example.get("text", "")
-    #         )
-    #         for example in batch
-    #     ]
+        Returns:
+            GeneratorInference: A structured record containing metadata and a list of `GeneratorOutput`.
+        """
+        self.load()
+
+        results = self.adapter.batch_generate(inputs)
+
+        outputs: list[GeneratorOutput] = []
+        for input, (text, elapsed, count_tokens) in zip(inputs, results):
+            outputs.append(
+                GeneratorOutput(
+                    id=input.id,
+                    text=text,
+                    elapsed=elapsed,
+                    count_tokens=count_tokens,
+                )
+            )
+
+        # 3) assemble the top‐level inference record
+        return GeneratorInference(
+            id=str(uuid.uuid4()),
+            dataset_id=dataset_id,
+            split=split,
+            generator_config=self.config,
+            outputs=outputs,
+            notes=notes,
+        )
 
     def to(self, device: str) -> None:
         """
@@ -100,7 +123,7 @@ class Generator:
         Args:
             device (str): Target device (e.g., 'cpu', 'cuda:0').
         """
-        self.init_adapter()
+        self.load()
         self.adapter.to(device)
         self.config.model.device = device
 

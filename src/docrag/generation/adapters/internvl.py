@@ -16,7 +16,7 @@ class InternVLAdapter(Adapter):
     Adapter for the InternVL3 vision-language  model.
     """
 
-    def _load(self) -> None:
+    def load(self) -> None:
         model_config = self.config.model
         self.model = AutoModelForImageTextToText.from_pretrained(
             model_config.path,
