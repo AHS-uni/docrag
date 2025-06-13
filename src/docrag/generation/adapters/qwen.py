@@ -1,3 +1,4 @@
+from PIL import Image
 import torch
 from transformers import (
     AutoProcessor,
@@ -73,32 +74,35 @@ class QwenAdapter(Adapter):
                 messages, tokenize=False, add_generation_prompt=True
             )
 
-            inputs = self.processor(
+            model_inputs = self.processor(
                 text=[chat],
                 images=input.images,
                 return_tensors="pt",
-            )
-            inputs.to(self.model.device, dtype=self.model.dtype)
+            ).to(self.model.device)
+
+            prompt_length = model_inputs["input_ids"].shape[-1]
 
             generation_config = self.config.generation
             generation_kwargs = generation_config.to_kwargs(exclude_defaults=True)
-            outputs = self.model.generate(**inputs, **generation_kwargs)
 
-            input_ids = inputs["input_ids"]
-            generated_ids = outputs[0][input_ids.shape[-1] :]
-            text = self.processor.decode(
-                generated_ids,
-                skip_special_tokens=True,
-                clean_up_tokenization_spaces=True,
-            )
+            with torch.inference_mode():
+                outputs = self.model.generate(**model_inputs, **generation_kwargs)
 
-        count_tokens = generated_ids.shape[-1]
-        return text, timer.elapsed, count_tokens
+                generated_ids = outputs[0, prompt_length:]
+                token_count = generated_ids.shape[-1]
+                decoded_text = self.processor.decode(
+                    generated_ids,
+                    skip_special_tokens=True,
+                    clean_up_tokenization_spaces=True,
+                )
 
-    def batch_generate(self, inputs: list[GeneratorInput]) -> list[tuple[str, float, int]]:
+        return decoded_text, timer.elapsed, token_count
+
+    def batch_generate(self, batch_input: list[GeneratorInput]) -> list[tuple[str, float, int]]:
         with Timer() as timer:
-            chats: list[str] = []
-            for input in inputs:
+            batch_chat: list[str] = []
+            batch_images: list[list[Image.Image]] = []
+            for input in batch_input:
                 prompt = self._apply_prompt_template(input.text)
                 messages = [
                     {
@@ -113,38 +117,45 @@ class QwenAdapter(Adapter):
                         ],
                     }
                 ]
-                chats.append(
+                batch_chat.append(
                     self.processor.apply_chat_template(
                         messages, tokenize=False, add_generation_prompt=True,
                     )
                 )
+                batch_images.append(input.images)
 
-            batch = self.processor(
-                text=chats,
-                images=[input.images for input in inputs],
+            batch_model_inputs = self.processor(
+                text=batch_chat,
+                images=batch_images,
                 return_tensors="pt",
                 padding=True,
-            )
-            batch = {
-                k: v.to(self.model.device, dtype=self.model.dtype) for k, v in batch.items()
-            }
+            ).to(self.model.device)
 
-            generation_kwargs = self.config.generation.to_kwargs(exclude_defaults=True)
-            outputs = self.model.generate(**batch, **generation_kwargs)
+            batch_prompt_length = batch_model_inputs["attention_mask"].sum(dim=1)
 
-            attention = batch["attention_mask"]
-            prompt_lengths = attention.sum(dim=1)
+            generation_config = self.config.generation
+            generation_kwargs = generation_config.to_kwargs(exclude_defaults=True)
 
-            results: list[tuple[str, float, int]] = []
-            for i, _ in enumerate(inputs):
-                start_idx = prompt_lengths[i]
-                generated_ids = outputs[i, start_idx:]
-                text = self.processor.decode(
-                    generated_ids,
-                    skip_special_tokens=True,
-                    clean_up_tokenization_spaces=True,
-                )
-                count_tokens = generated_ids.shape[-1]
-                results.append((text, timer.elapsed, count_tokens))
+            batch_count_tokens: list[int] = []
+            batch_decoded_text: list[str] = []
 
-        return results
+            with torch.inference_mode():
+                outputs = self.model.generate(**batch_model_inputs, **generation_kwargs)
+
+                for i, prompt_length in enumerate(batch_prompt_length):
+                    start_idx = prompt_length.item()
+                    generated_ids = outputs[i, start_idx:]
+                    token_count = generated_ids.shape[-1]
+                    decoded_text = self.processor.decode(
+                        generated_ids,
+                        skip_special_tokens=True,
+                        clean_up_tokenization_spaces=True,
+                    )
+                    batch_count_tokens.append(token_count)
+                    batch_decoded_text.append(decoded_text)
+
+
+        return [
+            (decoded_text, timer.elapsed, token_count)
+            for decoded_text, token_count in zip(batch_decoded_text, batch_count_tokens)
+        ]

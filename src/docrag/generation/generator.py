@@ -93,8 +93,6 @@ class Generator:
         """
         self.load()
 
-        self.load()
-
         batch_size = self.config.batch_size or len(inputs)
         results: list[tuple[str, float, int]] = []
 
