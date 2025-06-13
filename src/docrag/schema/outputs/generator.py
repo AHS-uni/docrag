@@ -12,13 +12,13 @@ class GeneratorOutput(BaseModel):
         id (str): External identifier.
         text (str): Decoded model output.
         count_tokens (int)L: Number of generated tokens.
-        elapsed (float): Wall-clock seconds for generation.
+        elapsed_seconds (float): Wall-clock seconds for generation.
     """
 
     id: str
     text: (str)
     count_tokens: int
-    elapsed: float
+    elapsed_seconds: float
 
 class GeneratorInference(BaseModel):
     """

@@ -48,7 +48,7 @@ class Adapter(ABC):
         Returns:
             tuple[str, float, int]: A tuple of
                 - text (str): Decoded model output
-                - elapsed (float): Time taken for generation in seconds
+                - elapsed_seconds (float): Time taken for generation in seconds
                 - count_tokens (int): Number of generated tokens
         """
         ...
@@ -63,7 +63,7 @@ class Adapter(ABC):
             inputs (list): List of GeneratorInput objects.
         Returns:
             list[tuple[str, float, int]]:
-                A list of tuples (text, elapsed_seconds, num_tokens).
+                A list of tuples (text, elapsed_seconds, count_tokens).
         """
         return [self.generate(inp) for inp in inputs]
 

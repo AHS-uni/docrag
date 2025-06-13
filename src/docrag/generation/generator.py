@@ -64,11 +64,11 @@ class Generator:
             number of generated tokens and elapsed time.
         """
         self.load()
-        text, elapsed, count_tokens = self.adapter.generate(input)
+        text, elapsed_seconds, count_tokens = self.adapter.generate(input)
         return GeneratorOutput(
             id=input.id,
             text=text,
-            elapsed=elapsed,
+            elapsed_seconds=elapsed_seconds,
             count_tokens=count_tokens,
         )
 
@@ -104,12 +104,12 @@ class Generator:
             results.extend(raw)
 
         outputs: list[GeneratorOutput] = []
-        for input, (text, elapsed, count_tokens) in zip(inputs, results):
+        for input, (text, elapsed_seconds, count_tokens) in zip(inputs, results):
             outputs.append(
                 GeneratorOutput(
                     id=input.id,
                     text=text,
-                    elapsed=elapsed,
+                    elapsed_seconds=elapsed_seconds,
                     count_tokens=count_tokens,
                 )
             )
