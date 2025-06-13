@@ -54,7 +54,7 @@ class Adapter(ABC):
         ...
 
     def batch_generate(
-        self, inputs: list[GeneratorInput]
+        self, batch_input: list[GeneratorInput]
     ) -> list[tuple[str, float, int]]:
         """
         Run inference over a list (batch) of inputs.
@@ -65,7 +65,7 @@ class Adapter(ABC):
             list[tuple[str, float, int]]:
                 A list of tuples (text, elapsed_seconds, count_tokens).
         """
-        return [self.generate(inp) for inp in inputs]
+        return [self.generate(inp) for inp in batch_input]
 
     def _apply_prompt_template(self, text: str) -> str:
         """
