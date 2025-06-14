@@ -131,7 +131,7 @@ class QwenAdapter(Adapter):
                 padding=True,
             ).to(self.model.device)
 
-            prompt_length = batch_model_inputs["input_ids"].shape[1]
+            prompt_length = batch_model_inputs["input_ids"].shape[-1]
 
             generation_config = self.config.generation
             generation_kwargs = generation_config.to_kwargs(exclude_defaults=True)
@@ -144,7 +144,7 @@ class QwenAdapter(Adapter):
 
                 for i in range(len(batch_input)):
                     generated_ids = outputs[i, prompt_length:]
-                    token_count = generated_ids.shape[1]
+                    token_count = generated_ids.shape[-1]
                     decoded_text = self.processor.decode(
                         generated_ids,
                         skip_special_tokens=True,
