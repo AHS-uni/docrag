@@ -11,7 +11,7 @@ class GeneratorOutput(BaseModel):
     Attributes:
         id (str): External identifier.
         text (str): Decoded model output.
-        count_tokens (int)L: Number of generated tokens.
+        count_tokens (int): Number of generated tokens.
         elapsed_seconds (float): Wall-clock seconds for generation.
     """
 
@@ -41,3 +41,25 @@ class GeneratorInference(BaseModel):
     notes: str | None = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     outputs: list[GeneratorOutput]
+
+class EvaluateOutput(BaseModel):
+    """
+    Per‐example evaluation result.
+    """
+
+    id: str
+    prediction: str
+    answer_variants: list[str]
+    anls: float
+
+
+class GeneratorEvaluate(BaseModel):
+    """
+    Aggregate evaluation record for a single run.
+    """
+
+    id: str
+    generator_config: GeneratorConfig
+    avg_anls: float
+    total_elapsed_seconds: float
+    per_example: list[EvaluateOutput]

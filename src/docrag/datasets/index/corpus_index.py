@@ -9,6 +9,7 @@ from docrag.utils import get_logger
 
 __all__ = [
     "CorpusIndex",
+    "FastCorpusIndex"
 ]
 
 
@@ -135,3 +136,56 @@ class CorpusIndex:
             images = self.get_document_pages(document_id)
             batch_result[document_id] = images
         return batch_result
+
+
+class FastCorpusIndex:
+    def __init__(self, dataset: Dataset):
+        self.dataset = dataset
+        # these two are fast list‐retrievals under the hood
+        doc_ids = dataset["document_id"]
+        page_nums = dataset["page_number"]
+
+        self.document_page_index: dict[tuple[str, int], int] = {}
+        self.document_to_indices: dict[str, list[int]] = defaultdict(list)
+
+        for idx, (doc_id, page_num) in enumerate(zip(doc_ids, page_nums)):
+            self.document_page_index[(doc_id, page_num)] = idx
+            self.document_to_indices[doc_id].append(idx)
+
+        # sort each document’s pages once
+        for doc_id, idxs in self.document_to_indices.items():
+            idxs.sort(key=lambda i: page_nums[i])
+
+    def get_page(self, document_id: str, page_number: int) -> Image.Image | None:
+        idx = self.document_page_index.get((document_id, page_number))
+        return None if idx is None else self.dataset[idx]["image"]
+
+    def get_pages(
+        self, document_id: str, page_numbers: list[int]
+    ) -> list[Image.Image | None]:
+        # direct lookup in our dict + list comprehension
+        return [self.get_page(document_id, p) for p in page_numbers]
+
+    def get_document_pages(self, document_id: str) -> list[Image.Image]:
+        idxs = self.document_to_indices.get(document_id, [])
+        # no sort needed here, already sorted
+        return [self.dataset[i]["image"] for i in idxs]
+
+    def get_batch_document_pages(
+        self, document_ids: list[str]
+    ) -> dict[str, list[Image.Image]]:
+        # flatten all indices, grab them in one batch, then regroup
+        to_fetch = []
+        for doc_id in document_ids:
+            to_fetch.extend(self.document_to_indices.get(doc_id, []))
+        # one select call instead of N
+        selected = self.dataset.select(to_fetch)
+        # now map back into per‐doc lists
+        out = {}
+        ptr = 0
+        for doc_id in document_ids:
+            idxs = self.document_to_indices.get(doc_id, [])
+            n = len(idxs)
+            out[doc_id] = [selected[j]["image"] for j in range(ptr, ptr + n)]
+            ptr += n
+        return out
