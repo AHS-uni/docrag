@@ -77,10 +77,10 @@ def run_inference(
         generator = Generator(config)
 
     info = dataset.info
-    dataset_id = getattr(info, "dataset_name", "") or getattr(
+    dataset_id = str(getattr(info, "dataset_name", "") or getattr(
         info, "builder_name", ""
-    )
-    split = getattr(dataset, "split", "")
+    ))
+    split = str(getattr(dataset, "split", ""))
 
     def _iter_inputs():
         for row in dataset:
