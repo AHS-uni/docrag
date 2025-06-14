@@ -83,7 +83,7 @@ def run_inference(
     split = getattr(dataset, "split", "")
 
     def _iter_inputs():
-        for _, row in dataset:
+        for row in dataset:
             raw = row[images_field]
             images = [raw] if isinstance(raw, Image.Image) else list(raw)
             yield GeneratorInput(
