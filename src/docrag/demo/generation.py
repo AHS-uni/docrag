@@ -77,7 +77,11 @@ class InternVLGenerator(Generator):
 
         prompt_length = inputs["input_ids"].shape[-1]
 
-        outputs = self.model.generate(**inputs)
+        outputs = self.model.generate(
+            **inputs,
+            max_new_tokens=256,
+            temperature=0.7,
+        )
         trimmed = outputs[0, prompt_length:]
         decoded = self.processor.batch_decode(
             trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=True
@@ -154,7 +158,11 @@ class QwenVLGenerator(Generator):
 
         prompt_length = inputs["input_ids"].shape[-1]
 
-        outputs = self.model.generate(**inputs)
+        outputs = self.model.generate(
+            **inputs,
+            max_new_tokens=256,
+            temperature=0.7,
+        )
         trimmed = outputs[0, prompt_length:]
         decoded = self.processor.batch_decode(
             trimmed,
