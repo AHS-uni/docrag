@@ -99,14 +99,24 @@ async def rag(req: RAGRequest) -> RAGResponse:
         retr = get_retriever(req.retriever)
         imgs_all = [Image.open(p) for p in image_paths]
         with torch.no_grad():
-            emb_all = retr.embed_images(imgs_all).cpu().numpy()
+            emb_all = (
+                retr.embed_images(imgs_all)
+                .to(dtype=torch.float32, device="cpu")
+                .contiguous()
+                .numpy()
+            )
         create_index(req.doc_id, emb_all)
         index = get_index(req.doc_id)
 
     # ─── 2) Embed & search top_k ───────────────────────────────────
     retr = get_retriever(req.retriever)
     with torch.no_grad():
-        q_emb = retr.embed_queries([req.query]).cpu().numpy()  # shape (1, D)
+        q_emb = (
+            retr.embed_queries([req.query])
+            .to(dtype=torch.float32, device="cpu")
+            .contiguous()
+            .numpy()
+        )
     faiss.normalize_L2(q_emb)
     distances, indices = index.search(q_emb, req.top_k)  # (1, top_k)
 

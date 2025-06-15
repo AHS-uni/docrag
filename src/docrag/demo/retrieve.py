@@ -86,7 +86,12 @@ async def retrieve(
         retr = get_retriever(retriever)
         imgs = [Image.open(p) for p in image_paths]
         with torch.no_grad():
-            emb = retr.embed_images(imgs).to(dtype=torch.float32, device="cpu").numpy()
+            emb = (
+                retr.embed_images(imgs)
+                .to(dtype=torch.float32, device="cpu")
+                .contiguous()
+                .numpy()
+            )
         create_index(doc_id, emb)
         index = get_index(doc_id)
 
@@ -94,7 +99,10 @@ async def retrieve(
     retr = get_retriever(retriever)
     with torch.no_grad():
         q_emb = (
-            retr.embed_queries([query]).to(dtype=torch.float32, device="cpu").numpy()
+            retr.embed_queries([query])
+            .to(dtype=torch.float32, device="cpu")
+            .contiguous()
+            .numpy()
         )
     faiss.normalize_L2(q_emb)
     distances, indices = index.search(q_emb, top_k)  # shapes: (1, top_k)
