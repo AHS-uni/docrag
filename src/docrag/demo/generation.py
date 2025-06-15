@@ -83,9 +83,9 @@ class InternVLGenerator(Generator):
             temperature=0.7,
         )
         trimmed = outputs[0, prompt_length:]
-        decoded = self.processor.batch_decode(
+        decoded = self.processor.decode(
             trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=True
-        )[0]
+        )
         return decoded
 
 
@@ -164,11 +164,9 @@ class QwenVLGenerator(Generator):
             temperature=0.7,
         )
         trimmed = outputs[0, prompt_length:]
-        decoded = self.processor.batch_decode(
-            trimmed,
-            skip_special_tokens=True,
-            clean_up_tokenization_spaces=True
-        )[0]
+        decoded = self.processor.decode(
+            trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=True
+        )
         return decoded
 
 
