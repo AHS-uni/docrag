@@ -7,15 +7,15 @@ from .registry import RETRIEVERS
 from .base import Retriever
 
 
-@RETRIEVERS.register("colnomic-3b")
-class ColNomicRetriever(Retriever):
+@RETRIEVERS.register("colqwen")
+class ColQwenetriever(Retriever):
     """Retriever using nomic-ai/colnomic-embed-multimodal-3b.
 
     Args:
         device: Optional device (e.g. "cuda:0" or "cpu").
     """
 
-    name = "colnomic-3b"
+    name = "colqwen"
     model_name = "nomic-ai/colnomic-embed-multimodal-3b"
 
     def __init__(self, device: str | torch.device | None = None):
@@ -25,7 +25,7 @@ class ColNomicRetriever(Retriever):
             self.model_name,
             torch_dtype=torch.bfloat16,
             device_map=device or "auto",
-            attn_implementation="flash_attention_2"
+            # attn_implementation="flash_attention_2"
         ).eval()
         self.processor = ColQwen2_5_Processor.from_pretrained(self.model_name)
 
@@ -56,7 +56,7 @@ class ColNomicRetriever(Retriever):
         return self.model(**batch)
 
 
-@RETRIEVERS.register("colpali-v1.3")
+@RETRIEVERS.register("colpali")
 class ColPaliRetriever(Retriever):
     """Retriever using vidore/colpali-v1.3.
 
@@ -64,7 +64,7 @@ class ColPaliRetriever(Retriever):
         device: Optional device (e.g. "cuda:0" or "cpu").
     """
 
-    name = "colpali-v1.3"
+    name = "colpali"
     model_name = "vidore/colpali-v1.3"
 
     def __init__(self, device: str | torch.device | None = None):

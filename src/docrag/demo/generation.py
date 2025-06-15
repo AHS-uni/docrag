@@ -10,16 +10,16 @@ from .registry import GENERATORS
 from .base import Generator
 
 
-@GENERATORS.register("internvl-3b")
-class InternvlGenerator(Generator):
+@GENERATORS.register("internvl")
+class InternVLGenerator(Generator):
     """Generator wrapper for OpenGVLab/InternVL3-1B-hf.
 
     Args:
         device: Optional device specifier, e.g. "cuda:0" or "cpu".
     """
 
-    name = "internvl-3b"
-    model_name = "OpenGVLab/InternVL3-1B-hf"
+    name = "internvl"
+    model_name = "OpenGVLab/InternVL3-2B-hf"
 
     def __init__(self, device: Optional[str] = None):
         """Load the processor and model onto the specified device."""
@@ -85,16 +85,16 @@ class InternvlGenerator(Generator):
         return decoded
 
 
-@GENERATORS.register("qwen2-vl-chat")
-class Qwen2VLChatGenerator(Generator):
+@GENERATORS.register("qwen")
+class QwenVLGenerator(Generator):
     """Generator wrapper for OpenGVLab/Qwen2-VL-Chat-1.5B.
 
     Args:
         device: Optional device specifier, e.g. "cuda:0" or "cpu".
     """
 
-    name = "qwen2-vl-chat"
-    model_name = "OpenGVLab/Qwen2-VL-Chat-1.5B"
+    name = "qwen"
+    model_name = "Qwen/Qwen2.5-VL-3B-Instruct"
 
     def __init__(self, device: Optional[str] = None):
         """Load the processor and model onto the specified device."""

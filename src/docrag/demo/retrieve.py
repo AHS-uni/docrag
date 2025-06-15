@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import List
 
 import faiss
+from numpy import float32
 import torch
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -85,14 +86,16 @@ async def retrieve(
         retr = get_retriever(retriever)
         imgs = [Image.open(p) for p in image_paths]
         with torch.no_grad():
-            emb = retr.embed_images(imgs).cpu().numpy()  # (num_pages, dim)
+            emb = retr.embed_images(imgs).to(dtype=torch.float32, device="cpu").numpy()
         create_index(doc_id, emb)
         index = get_index(doc_id)
 
     # 2) Embed the query and perform FAISS search
     retr = get_retriever(retriever)
     with torch.no_grad():
-        q_emb = retr.embed_queries([query]).cpu().numpy()  # (1, dim)
+        q_emb = (
+            retr.embed_queries([query]).to(dtype=torch.float32, device="cpu").numpy()
+        )
     faiss.normalize_L2(q_emb)
     distances, indices = index.search(q_emb, top_k)  # shapes: (1, top_k)
 
