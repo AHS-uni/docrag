@@ -1,98 +1,105 @@
-"""docrag demo – /retrieve router
+"""
+DocRAG demo – retrieval module.
 
-Given a *doc_id* (produced by /ingest) and a text *query*, compute similarity
-scores between the query and every page image of the document using one of the
-registered retriever back‑ends.
-
-Results are returned as a list sorted by descending similarity so the front‑end
-can display the top‑k pages.
+Given a document ID and a text query, searches the per-document FAISS index
+and returns the top-k most similar pages.
 """
 
 import glob
+import tempfile
 from pathlib import Path
 from typing import List
-import tempfile
 
+import faiss
 import torch
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from PIL import Image
 
-from docrag.demo.ingestion import EMBED_STORE  # reuse cached page embeddings
-from docrag.demo.retrieval import get_retriever  # wrapper factory
+from .index_manager import get_index, create_index
+from .retrieval import get_retriever
 
-# ---------------------------------------------------------------------------
 router = APIRouter(prefix="/retrieve", tags=["retrieval"])
 
 
 class PageScore(BaseModel):
-    page_number: int = Field(..., description="0‑based page index")
-    score: float = Field(..., description="Similarity score (higher = closer)")
+    """
+    Similarity score for an individual document page.
+
+    Attributes:
+        page_number: 0-based index of the page.
+        score: Similarity score (higher = more similar).
+    """
+
+    page_number: int = Field(..., description="0-based page index")
+    score: float = Field(..., description="Similarity score (higher is closer)")
 
 
 class RetrieveResponse(BaseModel):
+    """
+    Response model for the `/retrieve` endpoint.
+
+    Attributes:
+        doc_id: The document identifier.
+        results: A list of PageScore entries, sorted by score descending.
+    """
+
     doc_id: str
     results: List[PageScore]
-
-
-# ---------------------------------------------------------------------------
 
 
 @router.get("/", response_model=RetrieveResponse)
 async def retrieve(
     doc_id: str = Query(..., description="Document ID returned by /ingest"),
-    query: str = Query(..., description="Text query to embed and compare"),
-    retriever: str = Query("colpali", description="Which retriever back‑end to use"),
-    top_k: int = Query(5, ge=1, le=50, description="How many top pages to return"),
-):
-    """Compute similarity scores for *query* against every page of *doc_id*."""
+    query: str = Query(..., description="Text query to search"),
+    retriever: str = Query("colnomic-3b", description="Retriever backend key"),
+    top_k: int = Query(5, ge=1, le=50, description="Number of top pages to return"),
+) -> RetrieveResponse:
+    """
+    Retrieve the top-k most similar pages in a document for a text query.
 
-    # ---------------------------------------------------------------------
-    # 1. Obtain / compute page embeddings
-    # ---------------------------------------------------------------------
+    Args:
+        doc_id: Identifier of a previously ingested document.
+        query: Text query string.
+        retriever: Which retriever backend to use.
+        top_k: How many top pages to return.
 
-    if doc_id in EMBED_STORE:
-        page_embeds = EMBED_STORE[doc_id]  # shape: (num_pages, dim)
-    else:
-        # Fall back to embedding on‑the‑fly.
+    Returns:
+        A RetrieveResponse containing the doc_id and a sorted list of PageScore.
+
+    Raises:
+        HTTPException: If the document is unknown or no page images exist.
+    """
+    # 1) Get or build the FAISS index for this document
+    try:
+        index = get_index(doc_id)
+    except KeyError:
+        # Build index on-the-fly if missing
         doc_dir = Path(tempfile.gettempdir()) / "docrag_docs" / doc_id
         if not doc_dir.exists():
-            raise HTTPException(status_code=404, detail="Unknown doc_id – ingest first")
-
+            raise HTTPException(status_code=404, detail="Unknown doc_id")
         image_paths = sorted(glob.glob(str(doc_dir / "*.jpg")))
         if not image_paths:
-            raise HTTPException(
-                status_code=404, detail="No page images found for doc_id"
-            )
+            raise HTTPException(status_code=404, detail="No page images found")
 
         retr = get_retriever(retriever)
         imgs = [Image.open(p) for p in image_paths]
         with torch.no_grad():
-            page_embeds = retr.embed_images(imgs).cpu()
-        EMBED_STORE[doc_id] = page_embeds  # cache for future calls
+            emb = retr.embed_images(imgs).cpu().numpy()  # (num_pages, dim)
+        create_index(doc_id, emb)
+        index = get_index(doc_id)
 
-    num_pages = page_embeds.shape[0]
-
-    # ---------------------------------------------------------------------
-    # 2. Embed query text & score
-    # ---------------------------------------------------------------------
-
+    # 2) Embed the query and perform FAISS search
     retr = get_retriever(retriever)
-    query_emb = retr.embed_queries([query]).cpu()  # shape: (1, dim)
+    with torch.no_grad():
+        q_emb = retr.embed_queries([query]).cpu().numpy()  # (1, dim)
+    faiss.normalize_L2(q_emb)
+    distances, indices = index.search(q_emb, top_k)  # shapes: (1, top_k)
 
-    scores = retr.score(query_emb, page_embeds)  # (1, num_pages)
-    scores = scores.squeeze(0)  # -> (num_pages,)
-
-    # ---------------------------------------------------------------------
-    # 3. Top‑k & response formatting
-    # ---------------------------------------------------------------------
-
-    top_k = min(top_k, num_pages)
-    best_scores, best_idx = torch.topk(scores, k=top_k, largest=True)
-
+    # 3) Format the top-k results
     results = [
-        PageScore(page_number=int(i), score=float(s))
-        for s, i in zip(best_scores.tolist(), best_idx.tolist())
+        PageScore(page_number=int(idx), score=float(dist))
+        for dist, idx in zip(distances[0].tolist(), indices[0].tolist())
     ]
 
     return RetrieveResponse(doc_id=doc_id, results=results)

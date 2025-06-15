@@ -1,190 +1,117 @@
-"""docrag demo – retrieval wrappers
-
-Two lightweight retriever wrappers around:
-  • vidore/colpali-v1.3-hf
-  • nomic-ai/colnomic-embed-multimodal-3b
-
-The wrappers expose a minimal, common interface so the rest of the demo
-(app & API layer) can treat them identically.
-"""
-
-from functools import lru_cache
-from typing import List, Protocol
+"""DocRAG demo – concrete retriever backends and factory."""
 
 import torch
 from PIL import Image
-from transformers.utils.import_utils import is_flash_attn_2_available
 
-# ---------------------------------------------------------------------------
-# Common interface
-# ---------------------------------------------------------------------------
+from .registry import RETRIEVERS
+from .base import Retriever
 
 
-class Retriever(Protocol):
-    """Protocol every concrete retriever must satisfy."""
+@RETRIEVERS.register("colnomic-3b")
+class ColNomicRetriever(Retriever):
+    """Retriever using nomic-ai/colnomic-embed-multimodal-3b.
 
-    name: str
-
-    # ------- embedding helpers --------------------------------------------
-    def embed_images(self, images: List[Image.Image]) -> torch.Tensor:  # [N, D]
-        ...
-
-    def embed_queries(self, queries: List[str]) -> torch.Tensor:  # [M, D]
-        ...
-
-    # ------- scoring -------------------------------------------------------
-    def score(
-        self, query_embeds: torch.Tensor, image_embeds: torch.Tensor
-    ) -> torch.Tensor:
-        """Return a (Q × I) similarity matrix."""
-        ...
-
-    # ------- convenience ---------------------------------------------------
-    def rank(self, queries: List[str], images: List[Image.Image]) -> torch.Tensor:
-        """Shortcut that embeds and scores in one call."""
-        q_emb = self.embed_queries(queries)
-        i_emb = self.embed_images(images)
-        return self.score(q_emb, i_emb)
-
-
-# ---------------------------------------------------------------------------
-# ColNomic 3B retriever (ColQwen2.5 backbone)
-# ---------------------------------------------------------------------------
-
-
-class ColNomicRetriever:
-    """Wrapper around *nomic-ai/colnomic-embed-multimodal-3b* (a ColQwen2.5 model)."""
+    Args:
+        device: Optional device (e.g. "cuda:0" or "cpu").
+    """
 
     name = "colnomic-3b"
-    _MODEL_NAME = "nomic-ai/colnomic-embed-multimodal-3b"
+    model_name = "nomic-ai/colnomic-embed-multimodal-3b"
 
-    def __init__(self, device: str | None = None):
-        device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-
-        from colpali_engine.models import (
-            ColQwen2_5,
-            ColQwen2_5_Processor,
-        )  # lazy import
+    def __init__(self, device: str | torch.device | None = None):
+        from colpali_engine.models import ColQwen2_5, ColQwen2_5_Processor
 
         self.model = ColQwen2_5.from_pretrained(
-            self._MODEL_NAME,
-            torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
-            device_map=device,
+            self.model_name,
+            torch_dtype=torch.bfloat16,
+            device_map=device or "auto",
             attn_implementation="flash_attention_2"
-            if is_flash_attn_2_available()
-            else None,
         ).eval()
-        self.processor = ColQwen2_5_Processor.from_pretrained(self._MODEL_NAME)
-
-    # ---------------------------------------------------------------------
-    # API methods
-    # ---------------------------------------------------------------------
+        self.processor = ColQwen2_5_Processor.from_pretrained(self.model_name)
 
     @torch.inference_mode()
-    def embed_images(self, images: List[Image.Image]) -> torch.Tensor:
+    def embed_images(self, images: list[Image.Image]) -> torch.Tensor:
+        """Embed a list of images into feature vectors.
+
+        Args:
+            images: List of PIL.Image page images.
+
+        Returns:
+            Tensor of shape [num_images, embedding_dim].
+        """
         batch = self.processor.process_images(images).to(self.model.device)
-        return self.model(**batch)  # shape: [N, D]
+        return self.model(**batch)
 
     @torch.inference_mode()
-    def embed_queries(self, queries: List[str]) -> torch.Tensor:
+    def embed_queries(self, queries: list[str]) -> torch.Tensor:
+        """Embed a list of text queries into feature vectors.
+
+        Args:
+            queries: List of strings.
+
+        Returns:
+            Tensor of shape [num_queries, embedding_dim].
+        """
         batch = self.processor.process_queries(queries).to(self.model.device)
-        return self.model(**batch)  # shape: [M, D]
-
-    def score(
-        self, query_embeds: torch.Tensor, image_embeds: torch.Tensor
-    ) -> torch.Tensor:
-        # Uses the processor utility to compute dot‑product similarity.
-        return self.processor.score_multi_vector(query_embeds, image_embeds)
+        return self.model(**batch)
 
 
-# ---------------------------------------------------------------------------
-# ColPali v1.3 retriever
-# ---------------------------------------------------------------------------
+@RETRIEVERS.register("colpali-v1.3")
+class ColPaliRetriever(Retriever):
+    """Retriever using vidore/colpali-v1.3.
 
-
-class ColPaliRetriever:
-    """Wrapper around *vidore/colpali-v1.3-hf*"""
+    Args:
+        device: Optional device (e.g. "cuda:0" or "cpu").
+    """
 
     name = "colpali-v1.3"
-    _MODEL_NAME = "vidore/colpali-v1.3-hf"
+    model_name = "vidore/colpali-v1.3"
 
-    def __init__(self, device: str | None = None):
-        device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    def __init__(self, device: str | torch.device | None = None):
+        from colpali_engine.models import ColPali, ColPaliProcessor
 
-        from transformers import ColPaliForRetrieval, ColPaliProcessor  # type: ignore
-
-        self.model = ColPaliForRetrieval.from_pretrained(
-            self._MODEL_NAME,
-            torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
-            device_map=device,
+        self.model = ColPali.from_pretrained(
+            self.model_name,
+            torch_dtype=torch.bfloat16,
+            device_map=device or "auto",
         ).eval()
-        self.processor = ColPaliProcessor.from_pretrained(self._MODEL_NAME)
-
-    # ---------------------------------------------------------------------
-    # API methods
-    # ---------------------------------------------------------------------
+        self.processor = ColPaliProcessor.from_pretrained(self.model_name)
 
     @torch.inference_mode()
-    def embed_images(self, images: List[Image.Image]) -> torch.Tensor:
-        batch = self.processor(images=images).to(self.model.device)
-        return self.model(**batch).embeddings  # shape: [N, D]
+    def embed_images(self, images: list[Image.Image]) -> torch.Tensor:
+        """Embed a list of images into feature vectors.
+
+        Args:
+            images: List of PIL.Image page images.
+
+        Returns:
+            Tensor of shape [num_images, embedding_dim].
+        """
+        batch = self.processor.process_images(images).to(self.model.device)
+        return self.model(**batch)
 
     @torch.inference_mode()
-    def embed_queries(self, queries: List[str]) -> torch.Tensor:
-        batch = self.processor(text=queries).to(self.model.device)
-        return self.model(**batch).embeddings  # shape: [M, D]
+    def embed_queries(self, queries: list[str]) -> torch.Tensor:
+        """Embed a list of text queries into feature vectors.
 
-    def score(
-        self, query_embeds: torch.Tensor, image_embeds: torch.Tensor
-    ) -> torch.Tensor:
-        return self.processor.score_retrieval(query_embeds, image_embeds)
+        Args:
+            queries: List of strings.
 
-
-# ---------------------------------------------------------------------------
-# Simple registry util
-# ---------------------------------------------------------------------------
+        Returns:
+            Tensor of shape [num_queries, embedding_dim].
+        """
+        batch = self.processor.process_queries(queries).to(self.model.device)
+        return self.model(**batch)
 
 
-@lru_cache(maxsize=2)
-def _get_retriever(name: str) -> Retriever:
-    """Factory with memoisation (so heavy weights load once per process)."""
-    name = name.lower()
-    if name in {ColNomicRetriever.name, "colnomic"}:
-        return ColNomicRetriever()  # type: ignore[return-value]
-    if name in {ColPaliRetriever.name, "colpali"}:
-        return ColPaliRetriever()  # type: ignore[return-value]
-    raise ValueError(f"Unknown retriever '{name}' – available: colnomic, colpali")
+def get_retriever(name: str, device: str | None = None) -> Retriever:
+    """Load (if needed) and return a retriever instance.
 
+    Args:
+        name: Key name of the retriever.
+        device: Optional device for model placement.
 
-def get_retriever(name: str) -> Retriever:
-    """Public helper – thin wrapper around *_get_retriever* so the rest of the app
-    doesn’t need to know about @lru_cache.
+    Returns:
+        Instance of the requested Retriever.
     """
-    return _get_retriever(name)
-
-
-# ---------------------------------------------------------------------------
-# CLI test – quick smoke‑test when running this file directly
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Smoke‑test the retriever wrappers")
-    parser.add_argument("image_path", help="Path to a sample image file (jpg/png)")
-    parser.add_argument("query", help="Text query to embed and score")
-    parser.add_argument(
-        "--backend",
-        choices=["colpali", "colnomic"],
-        default="colpali",
-        help="Which retriever backend to use",
-    )
-    args = parser.parse_args()
-
-    from PIL import Image
-
-    retriever = get_retriever(args.backend)
-    img_emb = retriever.embed_images([Image.open(args.image_path)])
-    qry_emb = retriever.embed_queries([args.query])
-    sim = retriever.score(qry_emb, img_emb)
-    print(f"Similarity score: {sim.item():.4f}")
+    return RETRIEVERS.load(name, device=device)
