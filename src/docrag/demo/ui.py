@@ -65,7 +65,7 @@ with gr.Blocks(title="DocRAG Demo UI") as demo:
         with gr.Row():
             pdf_in = gr.File(label="Upload PDF", file_types=[".pdf"])
             retriever = gr.Dropdown(
-                ["colnomic-3b", "colpali-v1.3"], value="colnomic-3b", label="Retriever"
+                ["colpali", "colqwen"], value="colpali", label="Retriever"
             )
             do_embed = gr.Checkbox(value=True, label="Build FAISS index now")
             ingest_btn = gr.Button("Ingest")
@@ -85,7 +85,7 @@ with gr.Blocks(title="DocRAG Demo UI") as demo:
             query_r = gr.Textbox(label="Query")
         with gr.Row():
             retr2 = gr.Dropdown(
-                ["colnomic-3b", "colpali-v1.3"], value="colnomic-3b", label="Retriever"
+                ["colpali", "colqwen"], value="colpali", label="Retriever"
             )
             top_k_r = gr.Slider(1, 50, value=5, step=1, label="Top k")
             retrieve_btn = gr.Button("Retrieve")
@@ -102,7 +102,7 @@ with gr.Blocks(title="DocRAG Demo UI") as demo:
         with gr.Row():
             query_g = gr.Textbox(label="Query")
             gen_model = gr.Dropdown(
-                ["internvl-3b", "qwen2-vl-chat"], value="internvl-3b", label="Generator"
+                ["internvl", "qwenvl"], value="qwenvl", label="Generator"
             )
         system_prompt = gr.Textbox(label="System prompt (optional)", lines=2)
         prompt_template = gr.Textbox(label="Prompt template (optional)", lines=2)
@@ -120,10 +120,10 @@ with gr.Blocks(title="DocRAG Demo UI") as demo:
             query_rag = gr.Textbox(label="Query")
         with gr.Row():
             retr3 = gr.Dropdown(
-                ["colnomic-3b", "colpali-v1.3"], value="colnomic-3b", label="Retriever"
+                ["colpali", "colqwen"], value="colpali", label="Retriever"
             )
             gen3 = gr.Dropdown(
-                ["internvl-3b", "qwen2-vl-chat"], value="internvl-3b", label="Generator"
+                ["internvl", "qwenvl"], value="qwenvl", label="Generator"
             )
             top_k_rag = gr.Slider(1, 50, value=5, step=1, label="Top k")
         system_prompt2 = gr.Textbox(label="System prompt (optional)", lines=2)
