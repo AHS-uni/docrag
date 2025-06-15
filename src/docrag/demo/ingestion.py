@@ -116,7 +116,7 @@ async def ingest_pdf(
         retr = get_retriever(retriever)
         imgs = [Image.open(p) for p in page_paths]
         with torch.no_grad():
-            emb = retr.embed_images(imgs).cpu().numpy()  # shape: (num_pages, dim)
+            emb = retr.embed_images(imgs).to(dtype=torch.float32, device="cpu").numpy()
         create_index(doc_id, emb)
 
     return IngestResponse(
