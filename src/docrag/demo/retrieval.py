@@ -1,11 +1,18 @@
 """DocRAG demo – concrete retriever backends and factory."""
 
+from urllib.parse import uses_fragment
 import torch
 from PIL import Image
 
 from .registry import RETRIEVERS
 from .base import Retriever
 
+def _as_2d(t):
+    """Return (B, D) matrix for FAISS."""
+    if not isinstance(t, torch.Tensor):  # unwrap ColModelOutput
+        return t.embeddings  # .embeddings holds the tensor
+    if t.ndim == 3:  # (B, S, D)  →  average over S
+        return t.mean(dim=1)
 
 @RETRIEVERS.register("colqwen")
 class ColQwenetriever(Retriever):
@@ -27,7 +34,7 @@ class ColQwenetriever(Retriever):
             device_map=device or "auto",
             # attn_implementation="flash_attention_2"
         ).eval()
-        self.processor = ColQwen2_5_Processor.from_pretrained(self.model_name)
+        self.processor = ColQwen2_5_Processor.from_pretrained(self.model_name, use_fast=True)
 
     @torch.inference_mode()
     def embed_images(self, images: list[Image.Image]) -> torch.Tensor:
@@ -40,7 +47,7 @@ class ColQwenetriever(Retriever):
             Tensor of shape [num_images, embedding_dim].
         """
         batch = self.processor.process_images(images).to(self.model.device)
-        return self.model(**batch)
+        return _as_2d(self.model(**batch))
 
     @torch.inference_mode()
     def embed_queries(self, queries: list[str]) -> torch.Tensor:
@@ -53,7 +60,7 @@ class ColQwenetriever(Retriever):
             Tensor of shape [num_queries, embedding_dim].
         """
         batch = self.processor.process_queries(queries).to(self.model.device)
-        return self.model(**batch)
+        return _as_2d(self.model(**batch))
 
 
 @RETRIEVERS.register("colpali")
@@ -75,7 +82,7 @@ class ColPaliRetriever(Retriever):
             torch_dtype=torch.bfloat16,
             device_map=device or "auto",
         ).eval()
-        self.processor = ColPaliProcessor.from_pretrained(self.model_name)
+        self.processor = ColPaliProcessor.from_pretrained(self.model_name, use_fast=True)
 
     @torch.inference_mode()
     def embed_images(self, images: list[Image.Image]) -> torch.Tensor:
@@ -88,7 +95,7 @@ class ColPaliRetriever(Retriever):
             Tensor of shape [num_images, embedding_dim].
         """
         batch = self.processor.process_images(images).to(self.model.device)
-        return self.model(**batch)
+        return _as_2d(self.model(**batch))
 
     @torch.inference_mode()
     def embed_queries(self, queries: list[str]) -> torch.Tensor:
@@ -101,7 +108,7 @@ class ColPaliRetriever(Retriever):
             Tensor of shape [num_queries, embedding_dim].
         """
         batch = self.processor.process_queries(queries).to(self.model.device)
-        return self.model(**batch)
+        return _as_2d(self.model(**batch))
 
 
 def get_retriever(name: str, device: str | None = None) -> Retriever:

@@ -61,7 +61,7 @@ class InternVLGenerator(Generator):
             {
                 "role": "user",
                 "content": [
-                    *[{"type": "image", "image": image} for image in images],
+                    *[{"type": "image", "image": image} for image in (images or [])],
                     {"type": "text", "text": query},
                 ],
             },
@@ -85,7 +85,7 @@ class InternVLGenerator(Generator):
         return decoded
 
 
-@GENERATORS.register("qwen")
+@GENERATORS.register("qwenvl")
 class QwenVLGenerator(Generator):
     """Generator wrapper for OpenGVLab/Qwen2-VL-Chat-1.5B.
 
@@ -136,7 +136,7 @@ class QwenVLGenerator(Generator):
             {
                 "role": "user",
                 "content": [
-                    *[{"type": "image", "image": image} for image in images],
+                    *[{"type": "image", "image": image} for image in (images or [])],
                     {"type": "text", "text": query},
                 ],
             },
